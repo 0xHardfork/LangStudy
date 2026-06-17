@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/0xHardfork/langstudy/internal/auth"
+	"github.com/0xHardfork/langstudy/internal/dialogue"
+	"github.com/0xHardfork/langstudy/internal/ebbinghaus"
 	"github.com/0xHardfork/langstudy/internal/llmconfig"
 	"github.com/0xHardfork/langstudy/internal/user"
+	"github.com/0xHardfork/langstudy/internal/userprofile"
 	"github.com/0xHardfork/langstudy/migrations"
 	"github.com/0xHardfork/langstudy/platform/cache"
 	"github.com/0xHardfork/langstudy/platform/config"
@@ -99,6 +102,18 @@ func main() {
 	llmService := llmconfig.NewService(llmStore)
 	llmHandler := llmconfig.NewHandler(llmService)
 
+	profileStore := userprofile.NewStore(db)
+	profileService := userprofile.NewService(profileStore)
+	profileHandler := userprofile.NewHandler(profileService)
+
+	dialogueStore := dialogue.NewStore(db)
+	dialogueService := dialogue.NewService(dialogueStore, llmStore, log, "static")
+	dialogueHandler := dialogue.NewHandler(dialogueService)
+
+	ebbStore := ebbinghaus.NewStore(db)
+	ebbService := ebbinghaus.NewService(ebbStore)
+	ebbHandler := ebbinghaus.NewHandler(ebbService)
+
 	// 10. Router
 	ginMode := gin.DebugMode
 	if cfg.App.Env == "production" {
@@ -109,6 +124,9 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(zapLoggerMiddleware(log))
+
+	// Serve generated audio files
+	r.Static("/static", "./static")
 
 	r.GET("/health", func(c *gin.Context) {
 		response.Success(c, http.StatusOK, gin.H{"status": "ok"})
@@ -123,6 +141,16 @@ func main() {
 		authed.Use(auth.JWTMiddleware(cfg))
 		{
 			authed.GET("/profile", userHandler.GetProfile)
+			authed.GET("/me/profile", profileHandler.GetProfile)
+			authed.PUT("/me/profile", profileHandler.UpsertProfile)
+
+			authed.GET("/dialogue/topics", dialogueHandler.GetTopics)
+			authed.POST("/dialogue/generate", dialogueHandler.Generate)
+			authed.GET("/dialogue/:id", dialogueHandler.GetDialogue)
+			authed.GET("/dialogue", dialogueHandler.ListDialogues)
+
+			authed.GET("/reviews/due", ebbHandler.GetDueReviews)
+			authed.POST("/reviews/answer", ebbHandler.SubmitAnswer)
 		}
 
 		adminGroup := api.Group("/admin")
@@ -142,9 +170,9 @@ func main() {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.App.Port),
 		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  120 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	go func() {

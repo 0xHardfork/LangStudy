@@ -1,208 +1,423 @@
-import { useState, useEffect } from 'react'
-import { Radio } from 'antd'
+import { useState, useEffect, useRef } from 'react'
 import Login from './pages/Login'
 import AdminDashboard from './components/AdminDashboard'
+import TopicSelectModal from './components/TopicSelectModal'
+import LanguageSelectModal from './components/LanguageSelectModal'
+import FillBlankExercise from './components/FillBlankExercise'
+import ReviewExercise from './components/ReviewExercise'
+import UserProfileModal from './components/UserProfileModal'
+import LearningHistory from './components/LearningHistory'
+import { getLearningProfile, generateDialogue } from './services/api'
+import { useAppStore } from './store/useAppStore'
+import { DIALOGUE_TOPICS, LEVEL_LABELS } from './types'
+import type { TargetLanguage, UserLearningProfile } from './types'
 
-interface UserProfile {
+interface AuthUser {
   id: number
   username: string
   role: string
   created_at: string
 }
 
-interface DialogueSegment {
-  text: string
-  isBlank: boolean
-  blankLevel: number
-}
-
-interface DialogueItem {
-  id: number
-  role: 'speakerA' | 'speakerB'
-  translation: string
-  segments: DialogueSegment[]
-}
-
-const mockDialogues: DialogueItem[] = [
-  {
-    id: 1,
-    role: 'speakerA',
-    translation: 'Hello, how are you today?',
-    segments: [
-      { text: 'Bonjour', isBlank: true, blankLevel: 1 },
-      { text: 'comment', isBlank: true, blankLevel: 2 },
-      { text: 'allez-vous', isBlank: true, blankLevel: 3 },
-      { text: 'aujourd\'hui?', isBlank: false, blankLevel: 1 }
-    ]
-  },
-  {
-    id: 2,
-    role: 'speakerB',
-    translation: 'I am doing well, thank you!',
-    segments: [
-      { text: 'Je', isBlank: true, blankLevel: 1 },
-      { text: 'vais', isBlank: true, blankLevel: 2 },
-      { text: 'bien', isBlank: true, blankLevel: 3 },
-      { text: 'merci!', isBlank: false, blankLevel: 1 }
-    ]
-  }
-]
-
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'))
-  const [user, setUser] = useState<UserProfile | null>(null)
-  const [currentLevel, setCurrentLevel] = useState<number>(1)
-  const [loading, setLoading] = useState<boolean>(false)
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const {
+    currentView, setView,
+    selectedTopic, setSelectedTopic,
+    setSelectedLanguage,
+    currentDialogue, setCurrentDialogue,
+    fillBlankLevel, setFillBlankLevel,
+    generatingError, setGeneratingError,
+    exerciseResult, setExerciseResult,
+  } = useAppStore()
 
   useEffect(() => {
-    if (!token) {
-      setUser(null)
-      return
-    }
-
-    const fetchProfile = async () => {
-      setLoading(true)
-      try {
-        const response = await fetch('/api/v1/profile', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-        const result = await response.json()
-        if (response.ok && result.code === 0) {
-          setUser(result.data)
-        } else {
-          handleLogout()
-        }
-      } catch {
-        handleLogout()
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchProfile()
+    if (!token) { setUser(null); return }
+    setLoading(true)
+    fetch('/api/v1/profile', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((j) => { if (j.code === 0) setUser(j.data); else handleLogout() })
+      .catch(handleLogout)
+      .finally(() => setLoading(false))
   }, [token])
 
-  const handleLoginSuccess = (newToken: string) => {
-    localStorage.setItem('token', newToken)
-    setToken(newToken)
-  }
-
+  const handleLoginSuccess = (t: string) => { localStorage.setItem('token', t); setToken(t) }
+  
   const handleLogout = () => {
     localStorage.removeItem('token')
     setToken(null)
     setUser(null)
+    setMenuOpen(false)
+    setView('home')
   }
 
-  if (!token) {
-    return <Login onLoginSuccess={handleLoginSuccess} />
+  const [learningProfile, setLearningProfile] = useState<UserLearningProfile | null>(null)
+
+  const fetchProfile = () => {
+    if (!token || !user || user.role === 'admin') return
+    getLearningProfile(token)
+      .then(setLearningProfile)
+      .catch(() => setLearningProfile(null))
   }
 
-  if (loading) {
+  useEffect(() => {
+    fetchProfile()
+  }, [token, user])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleStartLearning = () => {
+    setExerciseResult(null)
+    setView('topic-select')
+  }
+
+  const handleTopicSelect = (topic: string) => {
+    setSelectedTopic(topic)
+    const targets = learningProfile?.target_languages ?? []
+    if (targets.length === 0) {
+      alert('请先在个人设定中配置学习语言与等级')
+      setView('home')
+    } else if (targets.length === 1) {
+      setSelectedLanguage(targets[0])
+      beginGenerate(topic, targets[0])
+    } else {
+      setView('language-select')
+    }
+  }
+
+  const handleLanguageSelect = (lang: TargetLanguage) => {
+    setSelectedLanguage(lang)
+    beginGenerate(selectedTopic, lang)
+  }
+
+  const beginGenerate = async (topic: string, lang: TargetLanguage) => {
+    setView('generating')
+    setGeneratingError(null)
+    try {
+      const d = await generateDialogue(token!, {
+        topic,
+        language: lang.lang,
+        level: lang.level,
+      })
+      setCurrentDialogue(d)
+      setView('fill-blank')
+    } catch (e: unknown) {
+      setGeneratingError((e as Error).message ?? '生成失败')
+      setView('home')
+    }
+  }
+
+  const handleExerciseFinish = (wrongCount: number) => {
+    setExerciseResult({ wrongCount })
+    setView('home')
+    setCurrentDialogue(null)
+  }
+
+  if (!token) return <Login onLoginSuccess={handleLoginSuccess} />
+
+  if (loading) return (
+    <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', background: '#020617' }}>
+      <div style={{ width: '2rem', height: '2rem', border: '3px solid rgba(100,116,139,0.3)', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+    </div>
+  )
+
+  if (user?.role === 'admin') return <AdminDashboard token={token} onLogout={handleLogout} user={user} />
+
+  if (currentView === 'fill-blank' && currentDialogue) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <div className="animate-spin h-8 w-8 text-blue-500 rounded-full border-4 border-slate-800 border-t-blue-500" />
-      </div>
+      <FillBlankExercise
+        token={token}
+        dialogue={currentDialogue}
+        fillBlankLevel={fillBlankLevel}
+        onFinish={handleExerciseFinish}
+        onLevelChange={setFillBlankLevel}
+        onBack={() => {
+          setView('home')
+          setCurrentDialogue(null)
+        }}
+      />
     )
   }
 
-  if (user && user.role === 'admin') {
-    return <AdminDashboard token={token} onLogout={handleLogout} user={user} />
+  if (currentView === 'review') {
+    return <ReviewExercise token={token} onFinish={() => setView('home')} />
   }
 
+  if (currentView === 'history') {
+    return (
+      <LearningHistory
+        token={token}
+        onSelectDialogue={(d) => {
+          setCurrentDialogue(d)
+          setView('fill-blank')
+        }}
+        onBack={() => setView('home')}
+      />
+    )
+  }
+
+  const activeTargetLang = learningProfile?.target_languages?.[0]
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
-      <header className="border-b border-slate-900 bg-slate-900/40 backdrop-blur-md sticky top-0 z-50">
-        <div className="mx-auto max-w-5xl px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center font-bold text-white">
-              L
-            </div>
-            <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-violet-400">
-              LangStudy
-            </span>
-          </div>
+    <div style={{ minHeight: '100vh', background: '#020617', color: '#f1f5f9', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg) } }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }
+      `}</style>
 
-          {user && (
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-slate-300">
-                Logged in as <strong className="text-white">{user.username}</strong>
-              </span>
-              <button
-                onClick={handleLogout}
-                className="rounded-lg bg-slate-900 border border-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white hover:border-slate-700 transition-colors cursor-pointer"
-              >
-                Log Out
-              </button>
-            </div>
-          )}
+      <header style={{ borderBottom: '1px solid rgba(100,116,139,0.15)', background: 'rgba(15,23,42,0.8)', backdropFilter: 'blur(8px)', position: 'sticky', top: 0, zIndex: 50, padding: '0 1.5rem', height: '4rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ width: '2rem', height: '2rem', borderRadius: '0.5rem', background: 'linear-gradient(135deg,#3b82f6,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: 'white', fontSize: '0.875rem' }}>L</div>
+          <span style={{ fontWeight: 700, fontSize: '1.125rem', background: 'linear-gradient(90deg,#60a5fa,#a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>LangStudy</span>
         </div>
+        
+        {user && (
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 1rem',
+                borderRadius: '0.75rem',
+                border: '1px solid rgba(100,116,139,0.25)',
+                background: 'rgba(30,41,59,0.4)',
+                color: '#e2e8f0',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              👤 {learningProfile?.nickname || user.username} ▾
+            </button>
+
+            {menuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  marginTop: '0.5rem',
+                  width: '180px',
+                  borderRadius: '0.75rem',
+                  border: '1px solid rgba(100,116,139,0.25)',
+                  background: 'rgba(15,23,42,0.95)',
+                  backdropFilter: 'blur(12px)',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                  padding: '0.5rem',
+                  zIndex: 60,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.25rem',
+                }}
+              >
+                <button
+                  onClick={() => {
+                    setShowProfileModal(true)
+                    setMenuOpen(false)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.625rem 0.875rem',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#e2e8f0',
+                    fontSize: '0.875rem',
+                    textAlign: 'left',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    width: '100%',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.15)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  ⚙️ 个人设定
+                </button>
+                <div style={{ height: '1px', background: 'rgba(100,116,139,0.15)', margin: '0.25rem 0' }} />
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.625rem 0.875rem',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#ef4444',
+                    fontSize: '0.875rem',
+                    textAlign: 'left',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    width: '100%',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  🚪 退出登录
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
-      <main className="flex-1 mx-auto w-full max-w-3xl px-4 py-8 flex flex-col space-y-8">
-        <div className="rounded-xl border border-slate-900 bg-slate-900/20 backdrop-blur-sm p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-white">Difficulty Control</h2>
-            <p className="text-xs text-slate-400 mt-1">Adjust fill-in-the-blank level threshold</p>
-          </div>
-          <div className="flex items-center">
-            <Radio.Group
-              value={currentLevel}
-              onChange={(e) => setCurrentLevel(Number(e.target.value))}
-              buttonStyle="solid"
-            >
-              <Radio.Button value={1} className="cursor-pointer">Level 1</Radio.Button>
-              <Radio.Button value={2} className="cursor-pointer">Level 2</Radio.Button>
-              <Radio.Button value={3} className="cursor-pointer">Level 3</Radio.Button>
-            </Radio.Group>
-          </div>
+      <main style={{ maxWidth: '720px', margin: '0 auto', padding: '3rem 1.5rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '3rem', animation: 'fadeIn 0.5s ease' }}>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800, background: 'linear-gradient(135deg,#60a5fa,#a78bfa,#f472b6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: '0.75rem' }}>
+            AI 对话语言学习
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '1rem' }}>
+            通过 AI 生成的真实对话练习，掌握地道表达
+          </p>
         </div>
 
-        <div className="flex flex-col space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-white">Study Dialogue</h3>
-            <span className="rounded-full bg-blue-500/10 border border-blue-500/20 px-2.5 py-0.5 text-xs text-blue-400">
-              Current Level: {currentLevel}
+        {exerciseResult && (
+          <div style={{ marginBottom: '2rem', padding: '1rem 1.5rem', borderRadius: '0.875rem', border: exerciseResult.wrongCount === 0 ? '1px solid rgba(34,197,94,0.3)' : '1px solid rgba(245,158,11,0.3)', background: exerciseResult.wrongCount === 0 ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)', animation: 'fadeIn 0.4s ease' }}>
+            <p style={{ fontWeight: 700, color: exerciseResult.wrongCount === 0 ? '#86efac' : '#fcd34d' }}>
+              {exerciseResult.wrongCount === 0 ? '🎉 全部正确！' : `📝 本次错误 ${exerciseResult.wrongCount} 句，已加入复习队列`}
+            </p>
+          </div>
+        )}
+
+        {generatingError && (
+          <div style={{ marginBottom: '2rem', padding: '1rem 1.5rem', borderRadius: '0.875rem', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
+            <p style={{ color: '#fca5a5', fontWeight: 600 }}>⚠️ 生成失败：{generatingError}</p>
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.25rem', marginBottom: '3rem' }}>
+          <ActionCard
+            id="btn-start-learning"
+            emoji="🎓"
+            title="今日学习"
+            desc="AI 生成新对话，开始填空练习"
+            gradient="linear-gradient(135deg,#1e3a8a,#312e81)"
+            hoverGradient="linear-gradient(135deg,#1d4ed8,#4c1d95)"
+            onClick={handleStartLearning}
+          />
+          <ActionCard
+            id="btn-start-review"
+            emoji="🔄"
+            title="今日复习"
+            desc="复习已学错题，巩固记忆"
+            gradient="linear-gradient(135deg,#1a2e1a,#1a2a2e)"
+            hoverGradient="linear-gradient(135deg,#14532d,#0c4a6e)"
+            onClick={() => setView('review')}
+          />
+          <ActionCard
+            id="btn-start-history"
+            emoji="📚"
+            title="浏览学习历史"
+            desc="浏览并回顾已经学过的对话"
+            gradient="linear-gradient(135deg,#2e1a47,#1a1a2e)"
+            hoverGradient="linear-gradient(135deg,#581c87,#1e1b4b)"
+            onClick={() => setView('history')}
+          />
+        </div>
+
+        {activeTargetLang && (
+          <div style={{ padding: '1rem 1.5rem', borderRadius: '0.875rem', border: '1px solid rgba(100,116,139,0.15)', background: 'rgba(30,41,59,0.3)', textAlign: 'center' }}>
+            <span style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>
+              当前配置：母语 <strong>{learningProfile?.native_language === 'zh' ? '中文' : learningProfile?.native_language.toUpperCase()}</strong> | 
+              目标语言 <strong>{activeTargetLang.lang === 'ja' ? '日语' : '英语'} ({LEVEL_LABELS[activeTargetLang.level]})</strong>
             </span>
           </div>
+        )}
+      </main>
 
-          <div className="space-y-4">
-            {mockDialogues.map((dialogue) => (
-              <div
-                key={dialogue.id}
-                className={`flex flex-col p-4 rounded-xl border ${
-                  dialogue.role === 'speakerA'
-                    ? 'border-blue-900/30 bg-blue-950/10 self-start mr-12'
-                    : 'border-violet-900/30 bg-violet-950/10 self-end ml-12'
-                } w-full max-w-lg`}
-              >
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {dialogue.segments.map((seg, idx) => {
-                    const shouldBlank = seg.isBlank && currentLevel >= seg.blankLevel
-                    return (
-                      <span
-                        key={idx}
-                        className={`px-2 py-1 rounded text-sm ${
-                          shouldBlank
-                            ? 'bg-slate-900 border border-dashed border-slate-700 text-transparent'
-                            : 'bg-slate-900/40 text-slate-200'
-                        }`}
-                      >
-                        {shouldBlank ? '________' : seg.text}
-                      </span>
-                    )
-                  })}
-                </div>
-                <div className="text-xs text-slate-400 mt-2 border-t border-slate-900 pt-2">
-                  {dialogue.translation}
-                </div>
-              </div>
-            ))}
+      {currentView === 'topic-select' && (
+        <TopicSelectModal
+          topics={DIALOGUE_TOPICS}
+          onSelect={handleTopicSelect}
+          onClose={() => setView('home')}
+        />
+      )}
+      {currentView === 'language-select' && (
+        <LanguageSelectModal
+          languages={learningProfile?.target_languages ?? []}
+          onSelect={handleLanguageSelect}
+          onClose={() => setView('home')}
+        />
+      )}
+      {currentView === 'generating' && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.5rem' }}>
+          <div style={{ width: '3rem', height: '3rem', border: '3px solid rgba(124,58,237,0.3)', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ color: '#c4b5fd', fontWeight: 700, fontSize: '1.125rem' }}>AI 正在生成对话...</p>
+            <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.5rem' }}>同时生成语音，请稍候（约 30-60 秒）</p>
           </div>
         </div>
-      </main>
+      )}
+
+      {showProfileModal && (
+        <UserProfileModal
+          token={token}
+          initialProfile={learningProfile}
+          onSave={(updated) => {
+            setLearningProfile(updated)
+            fetchProfile()
+          }}
+          onClose={() => setShowProfileModal(false)}
+        />
+      )}
     </div>
+  )
+}
+
+function ActionCard({
+  id, emoji, title, desc, gradient, hoverGradient, onClick,
+}: {
+  id: string; emoji: string; title: string; desc: string
+  gradient: string; hoverGradient: string; onClick: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      id={id}
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        padding: '1.75rem 1.5rem',
+        borderRadius: '1rem',
+        textAlign: 'left',
+        border: '1px solid rgba(100,116,139,0.15)',
+        background: hovered ? hoverGradient : gradient,
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        transform: hovered ? 'translateY(-3px)' : 'none',
+        boxShadow: hovered ? '0 12px 32px rgba(0,0,0,0.4)' : 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '1.5rem',
+        width: '100%',
+        boxSizing: 'border-box',
+      }}
+    >
+      <div style={{ fontSize: '2.5rem' }}>{emoji}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 700, fontSize: '1.125rem', color: '#f1f5f9', marginBottom: '0.375rem' }}>{title}</div>
+        <div style={{ fontSize: '0.8125rem', color: '#94a3b8' }}>{desc}</div>
+      </div>
+    </button>
   )
 }

@@ -1,4 +1,4 @@
-.PHONY: dev-fe dev-be dev-be-dev dev tidy build-be build-be-dev lint-be dev-clean
+.PHONY: dev-fe dev-be dev-be-dev dev tidy build-be build-be-dev lint-be dev-clean prepare
 
 DEV_CONTAINERS := langstudy-dev-postgres langstudy-dev-redis
 BACKEND_ENV_FILE := backend/.env
@@ -36,4 +36,15 @@ lint-be:
 
 dev-clean:
 	docker rm -f $(DEV_CONTAINERS) 2>/dev/null || true
+
+prepare:
+	@if [ ! -f backend/.env ]; then \
+		cp backend/.env.example backend/.env; \
+	fi
+	cd frontend && npm install
+	cd backend && go mod download
+	@if [ ! -d .venv ]; then \
+		python3 -m venv .venv; \
+	fi
+	.venv/bin/pip install -r requirements.txt
 
