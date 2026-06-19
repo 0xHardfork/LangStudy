@@ -10,13 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/0xHardfork/langstudy/internal/dialoguetype"
 	"github.com/0xHardfork/langstudy/internal/llmconfig"
 	"go.uber.org/zap"
 )
 
 // Service defines the business logic interface for dialogue generation.
 type Service interface {
-	GetTopics(ctx context.Context) []string
+	GetTopics(ctx context.Context) ([]dialoguetype.DialogueType, error)
 	GenerateDialogue(ctx context.Context, userID uint, req *GenerateRequest) (*Dialogue, error)
 	GetDialogue(ctx context.Context, id, userID uint) (*Dialogue, error)
 	ListDialogues(ctx context.Context, userID uint) ([]Dialogue, error)
@@ -25,22 +26,24 @@ type Service interface {
 type service struct {
 	store     Store
 	llmStore  llmconfig.Store
+	typeStore dialoguetype.Store
 	log       *zap.Logger
 	staticDir string // base directory for static files, e.g. "static"
 }
 
 // NewService creates a new dialogue Service.
-func NewService(store Store, llmStore llmconfig.Store, log *zap.Logger, staticDir string) Service {
+func NewService(store Store, llmStore llmconfig.Store, typeStore dialoguetype.Store, log *zap.Logger, staticDir string) Service {
 	return &service{
 		store:     store,
 		llmStore:  llmStore,
+		typeStore: typeStore,
 		log:       log,
 		staticDir: staticDir,
 	}
 }
 
-func (s *service) GetTopics(_ context.Context) []string {
-	return AvailableTopics
+func (s *service) GetTopics(ctx context.Context) ([]dialoguetype.DialogueType, error) {
+	return s.typeStore.List(ctx)
 }
 
 func (s *service) GetDialogue(ctx context.Context, id, userID uint) (*Dialogue, error) {
@@ -58,6 +61,12 @@ func (s *service) GenerateDialogue(ctx context.Context, userID uint, req *Genera
 		return nil, fmt.Errorf("load llm config: %w", err)
 	}
 
+	// Enrich request with type description from DB (non-fatal if missing)
+	if req.TopicDescription == "" {
+		if dt, lookupErr := s.typeStore.GetByName(ctx, req.Topic); lookupErr == nil {
+			req.TopicDescription = dt.Description
+		}
+	}
 	// --- Step 1: LLM call #1 — generate dialogue text ---
 	dialoguePrompt := buildDialoguePrompt(cfg.PromptTpl, req)
 	llmLines, err := s.callLLMForDialogue(ctx, cfg, dialoguePrompt)
@@ -250,14 +259,19 @@ func buildDialoguePrompt(tpl string, req *GenerateRequest) string {
 			"{{language}}", req.Language,
 			"{{level}}", req.Level,
 			"{{topic}}", req.Topic,
+			"{{topic_description}}", req.TopicDescription,
 		)
 		return r.Replace(tpl)
 	}
-	return fmt.Sprintf(`Generate a natural dialogue in %s at %s level about the topic "%s".
+	descHint := ""
+	if req.TopicDescription != "" {
+		descHint = fmt.Sprintf(" Context about this topic: %s", req.TopicDescription)
+	}
+	return fmt.Sprintf(`Generate a natural dialogue in %s at %s level about the topic "%s".%s
 The dialogue should have exactly 16 lines, alternating between speaker A (female) and speaker B (male).
 Return ONLY a JSON array with no other text, in this exact format:
 [{"speaker":"A","original_text":"<text in %s>","translation":"<Chinese translation>"},...]`,
-		req.Language, req.Level, req.Topic, req.Language)
+		req.Language, req.Level, req.Topic, descHint, req.Language)
 }
 
 // buildVocabPrompt constructs the second LLM prompt for vocabulary rating.

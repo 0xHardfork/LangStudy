@@ -20,7 +20,12 @@ func NewHandler(svc Service) *Handler {
 
 // GetTopics handles GET /api/v1/dialogue/topics
 func (h *Handler) GetTopics(c *gin.Context) {
-	response.Success(c, http.StatusOK, AvailableTopics)
+	types, err := h.svc.GetTopics(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, types)
 }
 
 // Generate handles POST /api/v1/dialogue/generate

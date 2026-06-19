@@ -7,10 +7,10 @@ import FillBlankExercise from './components/FillBlankExercise'
 import ReviewExercise from './components/ReviewExercise'
 import UserProfileModal from './components/UserProfileModal'
 import LearningHistory from './components/LearningHistory'
-import { getLearningProfile, generateDialogue } from './services/api'
+import { getLearningProfile, generateDialogue, getDialogueTypes } from './services/api'
 import { useAppStore } from './store/useAppStore'
-import { DIALOGUE_TOPICS, LEVEL_LABELS } from './types'
-import type { TargetLanguage, UserLearningProfile } from './types'
+import { LEVEL_LABELS } from './types'
+import type { TargetLanguage, UserLearningProfile, DialogueType } from './types'
 
 interface AuthUser {
   id: number
@@ -58,6 +58,7 @@ export default function App() {
   }
 
   const [learningProfile, setLearningProfile] = useState<UserLearningProfile | null>(null)
+  const [dialogueTypes, setDialogueTypes] = useState<DialogueType[]>([])
 
   const fetchProfile = () => {
     if (!token || !user || user.role === 'admin') return
@@ -68,6 +69,13 @@ export default function App() {
 
   useEffect(() => {
     fetchProfile()
+  }, [token, user])
+
+  useEffect(() => {
+    if (!token || !user || user.role === 'admin') return
+    getDialogueTypes(token)
+      .then(setDialogueTypes)
+      .catch(() => setDialogueTypes([]))
   }, [token, user])
 
   useEffect(() => {
@@ -85,15 +93,15 @@ export default function App() {
     setView('topic-select')
   }
 
-  const handleTopicSelect = (topic: string) => {
-    setSelectedTopic(topic)
+  const handleTopicSelect = (type: DialogueType) => {
+    setSelectedTopic(type.name)
     const targets = learningProfile?.target_languages ?? []
     if (targets.length === 0) {
       alert('请先在个人设定中配置学习语言与等级')
       setView('home')
     } else if (targets.length === 1) {
       setSelectedLanguage(targets[0])
-      beginGenerate(topic, targets[0])
+      beginGenerate(type.name, targets[0])
     } else {
       setView('language-select')
     }
@@ -346,7 +354,7 @@ export default function App() {
 
       {currentView === 'topic-select' && (
         <TopicSelectModal
-          topics={DIALOGUE_TOPICS}
+          types={dialogueTypes}
           onSelect={handleTopicSelect}
           onClose={() => setView('home')}
         />

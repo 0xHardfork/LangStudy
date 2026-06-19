@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { listDialogues, getDialogue } from '../services/api'
 import type { Dialogue } from '../types'
-import { LANGUAGE_LABELS, LEVEL_LABELS, TOPIC_EMOJIS } from '../types'
+import { LANGUAGE_LABELS, LEVEL_LABELS } from '../types'
 
 interface Props {
   token: string
@@ -114,7 +114,7 @@ export default function LearningHistory({ token, onSelectDialogue, onBack }: Pro
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
                     <div style={{ width: '2.5rem', height: '2.5rem', borderRadius: '0.75rem', background: 'rgba(124,58,237,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>
-                      {TOPIC_EMOJIS[d.topic] ?? '💬'}
+                      {'💬'}
                     </div>
                     <div>
                       <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#f1f5f9', margin: '0 0 0.25rem 0' }}>

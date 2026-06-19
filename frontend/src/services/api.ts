@@ -1,4 +1,4 @@
-import type { Dialogue, ReviewItem, UserLearningProfile } from '../types'
+import type { Dialogue, DialogueType, ReviewItem, UserLearningProfile } from '../types'
 
 const BASE = '/api/v1'
 
@@ -36,8 +36,38 @@ export function upsertLearningProfile(
 
 // ─── Dialogue ──────────────────────────────────────────────────────────────
 
-export function getTopics(token: string): Promise<string[]> {
-  return apiCall<string[]>(token, '/dialogue/topics')
+export function getDialogueTypes(token: string): Promise<DialogueType[]> {
+  return apiCall<DialogueType[]>(token, '/dialogue/types')
+}
+
+// Admin: dialogue types CRUD
+export function adminListDialogueTypes(token: string): Promise<DialogueType[]> {
+  return apiCall<DialogueType[]>(token, '/admin/dialogue-types')
+}
+
+export function adminCreateDialogueType(
+  token: string,
+  payload: { name: string; description: string; emoji: string; sort_order: number },
+): Promise<DialogueType> {
+  return apiCall<DialogueType>(token, '/admin/dialogue-types', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function adminUpdateDialogueType(
+  token: string,
+  id: number,
+  payload: { name: string; description: string; emoji: string; sort_order: number },
+): Promise<DialogueType> {
+  return apiCall<DialogueType>(token, `/admin/dialogue-types/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function adminDeleteDialogueType(token: string, id: number): Promise<void> {
+  return apiCall<void>(token, `/admin/dialogue-types/${id}`, { method: 'DELETE' })
 }
 
 export function generateDialogue(

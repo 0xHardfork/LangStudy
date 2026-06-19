@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { TOPIC_EMOJIS } from '../types'
+import type { DialogueType } from '../types'
 
 interface Props {
-  topics: string[]
-  onSelect: (topic: string) => void
+  types: DialogueType[]
+  onSelect: (type: DialogueType) => void
   onClose: () => void
 }
 
-export default function TopicSelectModal({ topics, onSelect, onClose }: Props) {
-  const [hovered, setHovered] = useState<string | null>(null)
+export default function TopicSelectModal({ types, onSelect, onClose }: Props) {
+  const [hovered, setHovered] = useState<number | null>(null)
 
   return (
     <div
@@ -28,8 +28,10 @@ export default function TopicSelectModal({ topics, onSelect, onClose }: Props) {
           border: '1px solid rgba(100,116,139,0.3)',
           borderRadius: '1.25rem',
           padding: '2rem',
-          width: '100%', maxWidth: '560px',
+          width: '100%', maxWidth: '600px',
           boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
+          maxHeight: '80vh',
+          overflowY: 'auto',
         }}
       >
         <h2 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '1.25rem', marginBottom: '0.5rem' }}>
@@ -40,34 +42,49 @@ export default function TopicSelectModal({ topics, onSelect, onClose }: Props) {
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          {topics.map((topic) => (
+          {types.map((type) => (
             <button
-              key={topic}
-              id={`topic-${topic}`}
-              onClick={() => onSelect(topic)}
-              onMouseEnter={() => setHovered(topic)}
+              key={type.id}
+              id={`topic-${type.id}`}
+              onClick={() => onSelect(type)}
+              onMouseEnter={() => setHovered(type.id)}
               onMouseLeave={() => setHovered(null)}
               style={{
-                display: 'flex', alignItems: 'center', gap: '0.75rem',
+                display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
                 padding: '0.875rem 1rem',
                 borderRadius: '0.75rem',
-                border: hovered === topic
+                border: hovered === type.id
                   ? '1px solid #7c3aed'
                   : '1px solid rgba(100,116,139,0.2)',
-                background: hovered === topic
+                background: hovered === type.id
                   ? 'rgba(124,58,237,0.15)'
                   : 'rgba(30,41,59,0.5)',
-                color: hovered === topic ? '#c4b5fd' : '#cbd5e1',
+                color: hovered === type.id ? '#c4b5fd' : '#cbd5e1',
                 fontSize: '0.875rem', fontWeight: 500,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
                 textAlign: 'left',
-                transform: hovered === topic ? 'translateY(-1px)' : 'none',
-                boxShadow: hovered === topic ? '0 4px 16px rgba(124,58,237,0.2)' : 'none',
+                transform: hovered === type.id ? 'translateY(-1px)' : 'none',
+                boxShadow: hovered === type.id ? '0 4px 16px rgba(124,58,237,0.2)' : 'none',
               }}
             >
-              <span style={{ fontSize: '1.25rem' }}>{TOPIC_EMOJIS[topic] ?? '💬'}</span>
-              <span>{topic}</span>
+              <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{type.emoji}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>{type.name}</div>
+                {type.description && (
+                  <div style={{
+                    fontSize: '0.75rem',
+                    color: hovered === type.id ? '#a78bfa' : '#64748b',
+                    lineHeight: 1.4,
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical' as const,
+                  }}>
+                    {type.description}
+                  </div>
+                )}
+              </div>
             </button>
           ))}
         </div>

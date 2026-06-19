@@ -12,6 +12,7 @@ import (
 
 	"github.com/0xHardfork/langstudy/internal/auth"
 	"github.com/0xHardfork/langstudy/internal/dialogue"
+	"github.com/0xHardfork/langstudy/internal/dialoguetype"
 	"github.com/0xHardfork/langstudy/internal/ebbinghaus"
 	"github.com/0xHardfork/langstudy/internal/llmconfig"
 	"github.com/0xHardfork/langstudy/internal/user"
@@ -107,7 +108,11 @@ func main() {
 	profileHandler := userprofile.NewHandler(profileService)
 
 	dialogueStore := dialogue.NewStore(db)
-	dialogueService := dialogue.NewService(dialogueStore, llmStore, log, "static")
+	typeStore := dialoguetype.NewStore(db)
+	typeService := dialoguetype.NewService(typeStore)
+	typeHandler := dialoguetype.NewHandler(typeService)
+
+	dialogueService := dialogue.NewService(dialogueStore, llmStore, typeStore, log, "static")
 	dialogueHandler := dialogue.NewHandler(dialogueService)
 
 	ebbStore := ebbinghaus.NewStore(db)
@@ -145,6 +150,7 @@ func main() {
 			authed.PUT("/me/profile", profileHandler.UpsertProfile)
 
 			authed.GET("/dialogue/topics", dialogueHandler.GetTopics)
+			authed.GET("/dialogue/types", typeHandler.List)
 			authed.POST("/dialogue/generate", dialogueHandler.Generate)
 			authed.GET("/dialogue/:id", dialogueHandler.GetDialogue)
 			authed.GET("/dialogue", dialogueHandler.ListDialogues)
@@ -163,6 +169,11 @@ func main() {
 
 			adminGroup.GET("/llm-config", llmHandler.GetConfig)
 			adminGroup.PUT("/llm-config", llmHandler.UpdateConfig)
+
+			adminGroup.GET("/dialogue-types", typeHandler.AdminList)
+			adminGroup.POST("/dialogue-types", typeHandler.AdminCreate)
+			adminGroup.PUT("/dialogue-types/:id", typeHandler.AdminUpdate)
+			adminGroup.DELETE("/dialogue-types/:id", typeHandler.AdminDelete)
 		}
 	}
 

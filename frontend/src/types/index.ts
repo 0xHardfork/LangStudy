@@ -53,6 +53,18 @@ export interface Dialogue {
   created_at: string
 }
 
+// ─── Dialogue Types ────────────────────────────────────────────────────────
+
+export interface DialogueType {
+  id: number
+  name: string
+  description: string
+  emoji: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
 // ─── Review ────────────────────────────────────────────────────────────────
 
 export interface ReviewItem {
@@ -91,20 +103,3 @@ export const LEVEL_LABELS: Record<string, string> = {
   advanced: '高级',
 }
 
-export const DIALOGUE_TOPICS = [
-  'SDL', 'Incident', '购物', '餐厅点餐', '职场沟通', '健康与医疗', '兴趣爱好',
-  'k8s-security', 'DevSevOps', 'Web3-Security',
-]
-
-export const TOPIC_EMOJIS: Record<string, string> = {
-  'SDL': '🛡️',
-  'Incident': '🚨',
-  '购物': '🛍️',
-  '餐厅点餐': '🍜',
-  '职场沟通': '💼',
-  '健康与医疗': '🏥',
-  '兴趣爱好': '🎨',
-  'k8s-security': '☸️',
-  'DevSevOps': '🔧',
-  'Web3-Security': '⛓️',
-}

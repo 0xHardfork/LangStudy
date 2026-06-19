@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Tabs, Table, Button, Modal, Form, Input, Select, Popconfirm, message, Card, Spin } from 'antd'
+import { Tabs, Table, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, message, Card, Spin } from 'antd'
+import {
+  adminListDialogueTypes,
+  adminCreateDialogueType,
+  adminUpdateDialogueType,
+  adminDeleteDialogueType,
+} from '../services/api'
 
 interface UserProfile {
   id: number
@@ -21,6 +27,16 @@ interface UserData {
   created_at: string
 }
 
+interface DialogueTypeData {
+  id: number
+  name: string
+  description: string
+  emoji: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
 export default function AdminDashboard({ token, onLogout, user }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState('users')
   const [users, setUsers] = useState<UserData[]>([])
@@ -30,6 +46,13 @@ export default function AdminDashboard({ token, onLogout, user }: AdminDashboard
 
   const [configLoading, setConfigLoading] = useState(false)
   const [configForm] = Form.useForm()
+
+  // Dialogue types state
+  const [dtypes, setDtypes] = useState<DialogueTypeData[]>([])
+  const [dtypesLoading, setDtypesLoading] = useState(false)
+  const [dtypeModalOpen, setDtypeModalOpen] = useState(false)
+  const [editingDtype, setEditingDtype] = useState<DialogueTypeData | null>(null)
+  const [dtypeForm] = Form.useForm()
 
   const fetchUsers = async () => {
     setUsersLoading(true)
@@ -78,8 +101,50 @@ export default function AdminDashboard({ token, onLogout, user }: AdminDashboard
       fetchUsers()
     } else if (activeTab === 'llm') {
       fetchLLMConfig()
+    } else if (activeTab === 'dtypes') {
+      fetchDtypes()
     }
   }, [activeTab])
+
+  const fetchDtypes = async () => {
+    setDtypesLoading(true)
+    try {
+      const data = await adminListDialogueTypes(token)
+      setDtypes(data)
+    } catch {
+      message.error('Failed to fetch dialogue types')
+    } finally {
+      setDtypesLoading(false)
+    }
+  }
+
+  const handleDtypeSubmit = async (values: { name: string; description: string; emoji: string; sort_order: number }) => {
+    try {
+      if (editingDtype) {
+        await adminUpdateDialogueType(token, editingDtype.id, values)
+        message.success('Dialogue type updated')
+      } else {
+        await adminCreateDialogueType(token, values)
+        message.success('Dialogue type created')
+      }
+      setDtypeModalOpen(false)
+      dtypeForm.resetFields()
+      setEditingDtype(null)
+      fetchDtypes()
+    } catch (e: unknown) {
+      message.error((e as Error).message || 'Operation failed')
+    }
+  }
+
+  const handleDtypeDelete = async (id: number) => {
+    try {
+      await adminDeleteDialogueType(token, id)
+      message.success('Deleted')
+      fetchDtypes()
+    } catch {
+      message.error('Delete failed')
+    }
+  }
 
   const handleAddUser = async (values: unknown) => {
     try {
@@ -340,8 +405,155 @@ export default function AdminDashboard({ token, onLogout, user }: AdminDashboard
           </Spin>
         </Card>
       )
+    },
+    {
+      key: 'dtypes',
+      label: 'Dialogue Types',
+      children: (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-bold text-white">Dialogue Topic Types</h3>
+            <Button
+              type="primary"
+              onClick={() => {
+                setEditingDtype(null)
+                dtypeForm.resetFields()
+                dtypeForm.setFieldsValue({ emoji: '💬', sort_order: 0 })
+                setDtypeModalOpen(true)
+              }}
+              className="bg-purple-600 hover:bg-purple-700 border-none rounded-lg cursor-pointer"
+            >
+              Add Type
+            </Button>
+          </div>
+
+          <Table
+            dataSource={dtypes}
+            rowKey="id"
+            loading={dtypesLoading}
+            pagination={{ pageSize: 20 }}
+            className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden"
+            columns={[
+              {
+                title: 'Emoji',
+                dataIndex: 'emoji',
+                key: 'emoji',
+                width: 64,
+                render: (e: string) => <span style={{ fontSize: '1.5rem' }}>{e}</span>,
+              },
+              {
+                title: 'Name',
+                dataIndex: 'name',
+                key: 'name',
+                render: (name: string) => <span className="font-semibold text-white">{name}</span>,
+              },
+              {
+                title: 'Description',
+                dataIndex: 'description',
+                key: 'description',
+                render: (desc: string) => (
+                  <span className="text-slate-400 text-xs line-clamp-2">{desc || '—'}</span>
+                ),
+              },
+              {
+                title: 'Sort',
+                dataIndex: 'sort_order',
+                key: 'sort_order',
+                width: 64,
+              },
+              {
+                title: 'Actions',
+                key: 'actions',
+                width: 120,
+                render: (_: unknown, record: DialogueTypeData) => (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => {
+                        setEditingDtype(record)
+                        dtypeForm.setFieldsValue(record)
+                        setDtypeModalOpen(true)
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Popconfirm
+                      title="Delete this type?"
+                      onConfirm={() => handleDtypeDelete(record.id)}
+                      okText="Yes"
+                      cancelText="No"
+                    >
+                      <Button type="link" danger size="small">Delete</Button>
+                    </Popconfirm>
+                  </div>
+                ),
+              },
+            ]}
+          />
+
+          <Modal
+            title={editingDtype ? 'Edit Dialogue Type' : 'Create Dialogue Type'}
+            open={dtypeModalOpen}
+            onCancel={() => {
+              setDtypeModalOpen(false)
+              dtypeForm.resetFields()
+              setEditingDtype(null)
+            }}
+            footer={null}
+            destroyOnClose
+          >
+            <Form
+              form={dtypeForm}
+              layout="vertical"
+              onFinish={handleDtypeSubmit}
+              className="mt-4"
+            >
+              <Form.Item
+                name="emoji"
+                label="Emoji"
+                rules={[{ required: true, message: 'Please enter an emoji' }]}
+              >
+                <Input placeholder="💬" maxLength={4} style={{ width: '80px' }} />
+              </Form.Item>
+
+              <Form.Item
+                name="name"
+                label="Name"
+                rules={[{ required: true, message: 'Name is required' }]}
+              >
+                <Input placeholder="e.g. k8s-security" />
+              </Form.Item>
+
+              <Form.Item
+                name="description"
+                label="Description (used as AI context)"
+              >
+                <Input.TextArea
+                  rows={4}
+                  placeholder="Describe the topic context so the AI generates more relevant dialogue..."
+                />
+              </Form.Item>
+
+              <Form.Item name="sort_order" label="Sort Order" initialValue={0}>
+                <InputNumber style={{ width: '100%' }} />
+              </Form.Item>
+
+              <Form.Item className="mb-0 flex justify-end space-x-2">
+                <Button onClick={() => setDtypeModalOpen(false)} className="mr-2 cursor-pointer">
+                  Cancel
+                </Button>
+                <Button type="primary" htmlType="submit" className="bg-purple-600 border-none cursor-pointer">
+                  {editingDtype ? 'Update' : 'Create'}
+                </Button>
+              </Form.Item>
+            </Form>
+          </Modal>
+        </div>
+      )
     }
   ]
+
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
