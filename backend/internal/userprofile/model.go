@@ -45,6 +45,7 @@ type UserProfile struct {
 	Nickname        string          `gorm:"size:64;not null;default:''"                         json:"nickname"`
 	NativeLanguage  string          `gorm:"column:native_language;size:20;not null;default:'zh'" json:"native_language"`
 	TargetLanguages TargetLanguages `gorm:"column:target_languages;type:jsonb;not null;default:'[]'" json:"target_languages"`
+	FillBlankLevel  int             `gorm:"column:fill_blank_level;not null;default:1"           json:"fill_blank_level"`
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 }
@@ -54,6 +55,7 @@ type UpsertProfileRequest struct {
 	Nickname        string          `json:"nickname"         binding:"max=64"`
 	NativeLanguage  string          `json:"native_language"  binding:"required,oneof=zh en ja ko fr de es"`
 	TargetLanguages TargetLanguages `json:"target_languages" binding:"required"`
+	FillBlankLevel  int             `json:"fill_blank_level"  binding:"required,min=1,max=4"`
 }
 
 // Service interface for dependency inversion.

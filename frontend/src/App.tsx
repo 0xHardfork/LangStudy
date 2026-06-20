@@ -74,6 +74,12 @@ export default function App() {
   }, [token, user])
 
   useEffect(() => {
+    if (learningProfile?.fill_blank_level) {
+      setFillBlankLevel(learningProfile.fill_blank_level)
+    }
+  }, [learningProfile, setFillBlankLevel])
+
+  useEffect(() => {
     if (!token || !user || user.role === 'admin') return
     getDialogueTypes(token)
       .then(setDialogueTypes)

@@ -27,6 +27,7 @@ func (s *service) GetProfile(ctx context.Context, userID uint) (*UserProfile, er
 			UserID:          userID,
 			NativeLanguage:  "zh",
 			TargetLanguages: TargetLanguages{},
+			FillBlankLevel:  1,
 		}, nil
 	}
 	return p, nil
@@ -39,6 +40,7 @@ func (s *service) UpsertProfile(ctx context.Context, userID uint, req *UpsertPro
 		Nickname:        req.Nickname,
 		NativeLanguage:  req.NativeLanguage,
 		TargetLanguages: req.TargetLanguages,
+		FillBlankLevel:  req.FillBlankLevel,
 	}
 	if err := s.store.Upsert(ctx, profile); err != nil {
 		return nil, fmt.Errorf("upsert profile: %w", err)

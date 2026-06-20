@@ -1,0 +1,1 @@
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS fill_blank_level INT NOT NULL DEFAULT 1;

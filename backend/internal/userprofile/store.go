@@ -44,6 +44,7 @@ func (s *gormStore) Upsert(ctx context.Context, profile *UserProfile) error {
 			Nickname:        profile.Nickname,
 			NativeLanguage:  profile.NativeLanguage,
 			TargetLanguages: profile.TargetLanguages,
+			FillBlankLevel:  profile.FillBlankLevel,
 		}).
 		FirstOrCreate(profile)
 	if result.Error != nil {

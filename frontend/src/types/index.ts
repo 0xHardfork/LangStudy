@@ -20,6 +20,7 @@ export interface UserLearningProfile {
   nickname: string
   native_language: string
   target_languages: TargetLanguage[]
+  fill_blank_level: number
 }
 
 // ─── Dialogue ──────────────────────────────────────────────────────────────

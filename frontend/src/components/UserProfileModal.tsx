@@ -25,6 +25,7 @@ export default function UserProfileModal({ token, initialProfile, onSave, onClos
   const [nativeLang, setNativeLang] = useState('zh')
   const [targetLang, setTargetLang] = useState('en')
   const [targetLevel, setTargetLevel] = useState('beginner')
+  const [fillBlankLevel, setFillBlankLevel] = useState(1)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -35,6 +36,9 @@ export default function UserProfileModal({ token, initialProfile, onSave, onClos
       if (initialProfile.target_languages && initialProfile.target_languages.length > 0) {
         setTargetLang(initialProfile.target_languages[0].lang)
         setTargetLevel(initialProfile.target_languages[0].level)
+      }
+      if (initialProfile.fill_blank_level) {
+        setFillBlankLevel(initialProfile.fill_blank_level)
       }
     }
   }, [initialProfile])
@@ -54,6 +58,7 @@ export default function UserProfileModal({ token, initialProfile, onSave, onClos
             level: targetLevel,
           },
         ],
+        fill_blank_level: fillBlankLevel,
       }
       const updated = await upsertLearningProfile(token, payload)
       onSave(updated)
@@ -197,6 +202,31 @@ export default function UserProfileModal({ token, initialProfile, onSave, onClos
               <option value="beginner" style={{ background: '#0f172a' }}>{LEVEL_LABELS.beginner}</option>
               <option value="intermediate" style={{ background: '#0f172a' }}>{LEVEL_LABELS.intermediate}</option>
               <option value="advanced" style={{ background: '#0f172a' }}>{LEVEL_LABELS.advanced}</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+              默认填空等级
+            </label>
+            <select
+              value={fillBlankLevel}
+              onChange={(e) => setFillBlankLevel(Number(e.target.value))}
+              style={{
+                width: '100%',
+                borderRadius: '0.5rem',
+                border: '1px solid rgba(100,116,139,0.3)',
+                background: 'rgba(2,6,17,0.5)',
+                padding: '0.625rem 0.875rem',
+                color: 'white',
+                fontSize: '0.875rem',
+                boxSizing: 'border-box',
+              }}
+            >
+              <option value={1} style={{ background: '#0f172a' }}>L1 (容易 - 挖空少)</option>
+              <option value={2} style={{ background: '#0f172a' }}>L2 (中等)</option>
+              <option value={3} style={{ background: '#0f172a' }}>L3 (较难)</option>
+              <option value={4} style={{ background: '#0f172a' }}>L4 (极难 - 全文挖空)</option>
             </select>
           </div>
 

@@ -188,12 +188,9 @@ function splitToken(token: string): { prefix: string; clean: string; suffix: str
 
 function getBlankIndices(line: DialogueLine, level: number): Set<number> {
   if (level === 4) return new Set()
-  const maxPerLine = level
-  const filtered = line.vocabulary
-    .filter((v) => v.importance <= level)
-    .sort((a, b) => a.importance - b.importance)
-    .slice(0, maxPerLine)
-  return new Set(filtered.map((v) => v.word_index))
+  const sorted = [...line.vocabulary].sort((a, b) => a.importance - b.importance)
+  const sliced = sorted.slice(0, level)
+  return new Set(sliced.map((v) => v.word_index))
 }
 
 // ─── FillBlankExercise ──────────────────────────────────────────────────────
