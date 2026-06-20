@@ -136,6 +136,10 @@ export function getDueReviews(token: string): Promise<ReviewItem[]> {
   return apiCall<ReviewItem[]>(token, '/reviews/due')
 }
 
+export function getReviewSchedule(token: string): Promise<ReviewItem[]> {
+  return apiCall<ReviewItem[]>(token, '/reviews/schedule')
+}
+
 export function submitAnswer(
   token: string,
   payload: { dialogue_line_id: number; is_correct: boolean },

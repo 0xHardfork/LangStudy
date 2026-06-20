@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { ReviewItem } from '../types'
-import { getDueReviews, submitAnswer } from '../services/api'
+import { getDueReviews, getReviewSchedule, submitAnswer } from '../services/api'
+
+// ─── AudioControls ──────────────────────────────────────────────────────────
 
 type PlayState = 'idle' | 'playing' | 'looping'
 
@@ -39,6 +41,7 @@ function AudioControls({ audioPath, lineIdx }: { audioPath: string | null; lineI
     a.play()
   }, [audioPath, playState, stop])
 
+  // Cleanup on unmount
   useEffect(() => () => { stop() }, [stop])
 
   const disabled = !audioPath
@@ -65,8 +68,11 @@ interface Props {
 
 export default function ReviewExercise({ token, onFinish }: Props) {
   const [reviews, setReviews] = useState<ReviewItem[]>([])
+  const [allReviews, setAllReviews] = useState<ReviewItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showChart, setShowChart] = useState(true)
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
   const [currentIdx, setCurrentIdx] = useState(0)
   const [input, setInput] = useState('')
   const [submitted, setSubmitted] = useState(false)
@@ -74,8 +80,20 @@ export default function ReviewExercise({ token, onFinish }: Props) {
   const [doneCount, setDoneCount] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
+  // Fetch reviews and all scheduled items
   useEffect(() => {
-    if (reviews.length > 0 && currentIdx < reviews.length) {
+    Promise.all([getDueReviews(token), getReviewSchedule(token)])
+      .then(([dueData, allData]) => {
+        setReviews(dueData)
+        setAllReviews(allData)
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [token])
+
+  // Focus textarea when starting/switching reviews
+  useEffect(() => {
+    if (!showChart && reviews.length > 0 && currentIdx < reviews.length) {
       const timer = setTimeout(() => {
         if (textareaRef.current) {
           textareaRef.current.focus()
@@ -83,8 +101,9 @@ export default function ReviewExercise({ token, onFinish }: Props) {
       }, 50)
       return () => clearTimeout(timer)
     }
-  }, [currentIdx, reviews.length])
+  }, [currentIdx, reviews.length, showChart])
 
+  // Focus next button after submit
   useEffect(() => {
     if (submitted) {
       const timer = setTimeout(() => {
@@ -96,13 +115,6 @@ export default function ReviewExercise({ token, onFinish }: Props) {
       return () => clearTimeout(timer)
     }
   }, [submitted])
-
-  useEffect(() => {
-    getDueReviews(token)
-      .then(setReviews)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [token])
 
   if (loading) return (
     <div style={{ minHeight: '100vh', background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -116,6 +128,242 @@ export default function ReviewExercise({ token, onFinish }: Props) {
     </div>
   )
 
+  // Group review schedule by date for next 7 days
+  const dates: string[] = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() + i)
+    dates.push(d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }))
+  }
+
+  const grouped: Record<string, ReviewItem[]> = {}
+  dates.forEach((d) => {
+    grouped[d] = []
+  })
+
+  const todayStr = dates[0]
+  allReviews.forEach((item) => {
+    const itemDate = new Date(item.next_review_at)
+    const endOfToday = new Date()
+    endOfToday.setHours(23, 59, 59, 999)
+
+    if (itemDate <= endOfToday) {
+      // Overdue or due today -> goes to Today's list
+      grouped[todayStr].push(item)
+    } else {
+      const itemDateStr = itemDate.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+      if (grouped[itemDateStr]) {
+        grouped[itemDateStr].push(item)
+      }
+    }
+  })
+
+  // Chart rendering screen
+  if (showChart) {
+    const maxCount = Math.max(...dates.map((d) => grouped[d].length), 5)
+    const activeIdx = hoveredIdx !== null ? hoveredIdx : 0
+    const activeDateStr = dates[activeIdx]
+    const activeItems = grouped[activeDateStr] || []
+
+    return (
+      <div style={{ minHeight: '100vh', background: '#020617', color: '#f1f5f9', fontFamily: 'Inter, system-ui, sans-serif', padding: '2rem 1.5rem' }}>
+        <div style={{ maxWidth: '640px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, background: 'linear-gradient(90deg,#60a5fa,#a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              📊 艾宾浩斯复习计划
+            </h2>
+            <button onClick={onFinish} style={{ padding: '0.4rem 0.875rem', borderRadius: '0.5rem', border: '1px solid rgba(100,116,139,0.3)', background: 'transparent', color: '#94a3b8', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s ease' }}>
+              返回主页
+            </button>
+          </div>
+
+          {/* Line Chart Card */}
+          <div style={{ padding: '1.5rem', borderRadius: '1rem', background: 'rgba(30,41,59,0.2)', border: '1px solid rgba(100,116,139,0.15)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.875rem', color: '#94a3b8' }}>未来 7 天复习规划总量统计</span>
+              <span style={{ fontSize: '0.75rem', color: '#475569' }}>💡 鼠标悬停查看每日句子概要</span>
+            </div>
+            
+            {/* SVG Custom Line Chart */}
+            <div style={{ width: '100%', height: '200px', display: 'flex', justifyContent: 'center' }}>
+              <svg width="100%" height="200" viewBox="0 0 560 200" style={{ overflow: 'visible' }}>
+                <defs>
+                  <linearGradient id="chartGradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="100%" stopColor="#8b5cf6" />
+                  </linearGradient>
+                </defs>
+
+                {/* Grid lines */}
+                {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
+                  const yVal = 30 + ratio * 130
+                  const labelVal = Math.round(maxCount * (1 - ratio))
+                  return (
+                    <g key={idx}>
+                      <line x1="40" y1={yVal} x2="520" y2={yVal} stroke="rgba(100,116,139,0.1)" strokeDasharray="4 4" />
+                      <text x="30" y={yVal + 4} textAnchor="end" fill="#475569" fontSize="10">{labelVal}</text>
+                    </g>
+                  )
+                })}
+
+                {/* X Axis Labels */}
+                {dates.map((d, i) => {
+                  const xVal = 40 + (i / 6) * 480
+                  const isToday = i === 0
+                  return (
+                    <text key={i} x={xVal} y="185" textAnchor="middle" fill={isToday ? '#60a5fa' : '#64748b'} fontSize="10" fontWeight={isToday ? 700 : 400}>
+                      {isToday ? '今日' : d}
+                    </text>
+                  )
+                })}
+
+                {/* Line Path */}
+                <path
+                  d={dates.map((d, i) => {
+                    const xVal = 40 + (i / 6) * 480
+                    const yVal = 30 + 130 - (grouped[d].length / maxCount) * 130
+                    return `${i === 0 ? 'M' : 'L'} ${xVal} ${yVal}`
+                  }).join(' ')}
+                  fill="none"
+                  stroke="url(#chartGradient)"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+
+                {/* Dots & Interactive overlay */}
+                {dates.map((d, i) => {
+                  const xVal = 40 + (i / 6) * 480
+                  const count = grouped[d].length
+                  const yVal = 30 + 130 - (count / maxCount) * 130
+                  const isActive = activeIdx === i
+
+                  return (
+                    <g key={i}>
+                      {/* Catcher */}
+                      <circle
+                        cx={xVal}
+                        cy={yVal}
+                        r="18"
+                        fill="transparent"
+                        style={{ cursor: 'pointer' }}
+                        onMouseEnter={() => setHoveredIdx(i)}
+                      />
+                      {/* Main visible dot */}
+                      <circle
+                        cx={xVal}
+                        cy={yVal}
+                        r={isActive ? "7" : "5"}
+                        fill={isActive ? "#c084fc" : "#3b82f6"}
+                        stroke="#020617"
+                        strokeWidth="2"
+                        style={{ transition: 'all 0.15s ease', pointerEvents: 'none' }}
+                      />
+                      {/* Count label above dot */}
+                      <text
+                        x={xVal}
+                        y={yVal - 10}
+                        textAnchor="middle"
+                        fill={isActive ? "#c084fc" : "#94a3b8"}
+                        fontSize="10"
+                        fontWeight="bold"
+                        style={{ pointerEvents: 'none', transition: 'all 0.15s ease' }}
+                      >
+                        {count}
+                      </text>
+                    </g>
+                  )
+                })}
+              </svg>
+            </div>
+          </div>
+
+          {/* Planned Sentences Summary List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <h3 style={{ margin: 0, fontSize: '0.9375rem', color: '#94a3b8', fontWeight: 600 }}>
+              {activeIdx === 0 ? '今日待复习句子的概要' : `${activeDateStr} 计划复习句子的概要`}
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '240px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+              {activeItems.length === 0 ? (
+                <div style={{ padding: '2rem 1rem', textAlign: 'center', background: 'rgba(15,23,42,0.3)', borderRadius: '0.75rem', border: '1px solid rgba(100,116,139,0.08)', display: 'flex', justifyContent: 'center', color: '#475569', fontSize: '0.875rem' }}>
+                  此日期没有计划复习的句子
+                </div>
+              ) : (
+                activeItems.map((item, idx) => (
+                  <div key={item.id || idx} style={{ padding: '0.75rem 1rem', borderRadius: '0.75rem', background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(100,116,139,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <span style={{ fontSize: '0.875rem', color: '#e2e8f0', lineHeight: 1.4 }}>
+                        {item.translation}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#475569' }}>
+                        复习轮次: 第 {item.review_count + 1} 轮
+                      </span>
+                    </div>
+                    {item.audio_path && (
+                      <span style={{ fontSize: '1rem' }}>🔊</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Action Button at bottom */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.5rem' }}>
+            {reviews.length > 0 ? (
+              <button
+                onClick={() => setShowChart(false)}
+                style={{
+                  width: '100%',
+                  padding: '1rem 2rem',
+                  borderRadius: '0.875rem',
+                  border: 'none',
+                  background: 'linear-gradient(135deg,#3b82f6,#7c3aed)',
+                  color: 'white',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 16px rgba(124,58,237,0.3)',
+                  transition: 'all 0.15s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                🚀 开始今日复习 ({reviews.length} 句)
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', width: '100%' }}>
+                <div style={{ width: '100%', padding: '1rem', borderRadius: '0.75rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', textAlign: 'center', color: '#86efac', fontSize: '0.875rem' }}>
+                  🎉 太棒了！今天所有的句子都已复习完毕！
+                </div>
+                <button
+                  onClick={onFinish}
+                  style={{
+                    width: '100%',
+                    padding: '0.875rem',
+                    borderRadius: '0.75rem',
+                    border: '1px solid rgba(100,116,139,0.25)',
+                    background: 'rgba(30,41,59,0.4)',
+                    color: '#94a3b8',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  返回主页
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Active Review Exercise Screen
   if (reviews.length === 0) return (
     <div style={{ minHeight: '100vh', background: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.5rem' }}>
       <div style={{ fontSize: '3rem' }}>🎉</div>
@@ -129,7 +377,7 @@ export default function ReviewExercise({ token, onFinish }: Props) {
 
   if (currentIdx >= reviews.length) return (
     <div style={{ minHeight: '100vh', background: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.5rem' }}>
-      <div style={{ fontSize: '3rem' }}>✅</div>
+      <div style={{ fontSize: '3rem' }}></div>
       <h2 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '1.5rem' }}>复习完成！</h2>
       <p style={{ color: '#64748b' }}>共复习 {doneCount} 句</p>
       <button onClick={onFinish} style={{ padding: '0.75rem 2rem', borderRadius: '0.75rem', border: 'none', background: 'linear-gradient(135deg,#3b82f6,#7c3aed)', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
@@ -183,8 +431,8 @@ export default function ReviewExercise({ token, onFinish }: Props) {
           <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>🔄 艾宾浩斯复习</span>
           <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem' }}>{currentIdx + 1} / {reviews.length}</div>
         </div>
-        <button onClick={onFinish} style={{ padding: '0.375rem 0.875rem', borderRadius: '0.5rem', border: '1px solid rgba(100,116,139,0.3)', background: 'transparent', color: '#64748b', fontSize: '0.8125rem', cursor: 'pointer' }}>
-          返回
+        <button onClick={() => setShowChart(true)} style={{ padding: '0.375rem 0.875rem', borderRadius: '0.5rem', border: '1px solid rgba(100,116,139,0.3)', background: 'transparent', color: '#64748b', fontSize: '0.8125rem', cursor: 'pointer' }}>
+          查看计划
         </button>
       </div>
 
@@ -196,7 +444,7 @@ export default function ReviewExercise({ token, onFinish }: Props) {
               <AudioControls audioPath={item.audio_path} lineIdx={currentIdx} />
             </div>
 
-            <p style={{ color: '#94a3b8', fontSize: '1rem', marginBottom: '1.5rem', fontStyle: 'italic' }}>
+            <p style={{ color: '#CBD5E1', fontSize: '1.125rem', marginBottom: '1.5rem', fontWeight: 500, lineHeight: 1.5 }}>
               💬 {item.translation}
             </p>
 
@@ -214,11 +462,11 @@ export default function ReviewExercise({ token, onFinish }: Props) {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
-                  const btn = document.getElementById('btn-submit-review')
-                  if (btn) {
-                    btn.focus()
+                  if (!submitted) {
+                    handleSubmit()
+                  } else {
+                    handleNext()
                   }
-                  handleSubmit()
                 }
               }}
               placeholder="请输入完整句子..."
@@ -226,14 +474,14 @@ export default function ReviewExercise({ token, onFinish }: Props) {
               style={{
                 width: '100%', boxSizing: 'border-box', padding: '0.75rem',
                 borderRadius: '0.625rem',
-                border: submitted ? (isCorrect ? '1px solid #22c55e' : '1px solid #ef4444') : '1px solid rgba(100,116,139,0.3)',
+                border: submitted ? (isCorrect ? '2px solid #22c55e' : '2px solid #ef4444') : '1px solid rgba(100,116,139,0.3)',
                 background: 'rgba(15,23,42,0.6)', color: '#f1f5f9',
-                fontSize: '1rem', resize: 'vertical', outline: 'none',
+                fontSize: '1.125rem', resize: 'vertical', outline: 'none',
               }}
             />
 
             {submitted && (
-              <div style={{ marginTop: '1rem', padding: '0.75rem', borderRadius: '0.625rem', background: isCorrect ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${isCorrect ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: isCorrect ? '#86efac' : '#fca5a5', fontSize: '0.875rem', fontWeight: 600 }}>
+              <div style={{ marginTop: '1rem', padding: '0.75rem', borderRadius: '0.625rem', background: isCorrect ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${isCorrect ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: isCorrect ? '#86efac' : '#fca5a5', fontSize: '0.9375rem', fontWeight: 600 }}>
                 {isCorrect ? '✅ 正确！' : `❌ 正确答案：${item.original_text}`}
               </div>
             )}

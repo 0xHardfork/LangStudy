@@ -36,6 +36,28 @@ func (s *svc) GetDueReviews(ctx context.Context, userID uint) ([]ReviewWithLine,
 	return result, nil
 }
 
+// GetReviewSchedule returns all review items scheduled for the user.
+func (s *svc) GetReviewSchedule(ctx context.Context, userID uint) ([]ReviewWithLine, error) {
+	rows, err := s.store.GetReviewSchedule(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get review schedule: %w", err)
+	}
+	result := make([]ReviewWithLine, len(rows))
+	for i, r := range rows {
+		result[i] = ReviewWithLine{
+			ID:             r.ReviewID,
+			DialogueLineID: r.DialogueLineID,
+			OriginalText:   r.OriginalText,
+			Translation:    r.Translation,
+			AudioPath:      r.AudioPath,
+			NextReviewAt:   r.NextReviewAt.Format(time.RFC3339),
+			ReviewCount:    r.ReviewCount,
+		}
+	}
+	return result, nil
+}
+
+
 // RecordAnswer updates the review schedule based on whether the answer was correct.
 //
 // Correct:   review_count++ → next interval = ReviewIntervals[review_count] days

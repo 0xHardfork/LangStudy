@@ -39,6 +39,7 @@ type ReviewWithLine struct {
 // Service defines the business logic interface for Ebbinghaus reviews.
 type Service interface {
 	GetDueReviews(ctx context.Context, userID uint) ([]ReviewWithLine, error)
+	GetReviewSchedule(ctx context.Context, userID uint) ([]ReviewWithLine, error)
 	RecordAnswer(ctx context.Context, userID uint, req *SubmitAnswerRequest) error
 	UpsertReview(ctx context.Context, userID, dialogueLineID uint) error
 }

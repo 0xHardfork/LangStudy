@@ -160,6 +160,7 @@ func main() {
 			authed.GET("/dialogue", dialogueHandler.ListDialogues)
 
 			authed.GET("/reviews/due", ebbHandler.GetDueReviews)
+			authed.GET("/reviews/schedule", ebbHandler.GetReviewSchedule)
 			authed.POST("/reviews/answer", ebbHandler.SubmitAnswer)
 		}
 

@@ -33,6 +33,23 @@ func (h *Handler) GetDueReviews(c *gin.Context) {
 	response.Success(c, http.StatusOK, reviews)
 }
 
+// GetReviewSchedule handles GET /api/v1/reviews/schedule
+func (h *Handler) GetReviewSchedule(c *gin.Context) {
+	userID, err := currentUserID(c)
+	if err != nil {
+		response.Fail(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	reviews, err := h.svc.GetReviewSchedule(c.Request.Context(), userID)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, reviews)
+}
+
+
 // SubmitAnswer handles POST /api/v1/reviews/answer
 func (h *Handler) SubmitAnswer(c *gin.Context) {
 	userID, err := currentUserID(c)

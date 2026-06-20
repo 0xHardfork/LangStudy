@@ -12,6 +12,7 @@ import (
 // Store is the data access interface for EbbinghausReview.
 type Store interface {
 	GetDueReviews(ctx context.Context, userID uint, limit int) ([]reviewWithLineRow, error)
+	GetReviewSchedule(ctx context.Context, userID uint) ([]reviewWithLineRow, error)
 	Upsert(ctx context.Context, review *EbbinghausReview) error
 	GetByUserAndLine(ctx context.Context, userID, dialogueLineID uint) (*EbbinghausReview, error)
 }
@@ -74,6 +75,45 @@ func (s *gormStore) GetDueReviews(ctx context.Context, userID uint, limit int) (
 	}
 	return result, nil
 }
+
+// GetReviewSchedule returns all reviews scheduled for the user.
+func (s *gormStore) GetReviewSchedule(ctx context.Context, userID uint) ([]reviewWithLineRow, error) {
+	type row struct {
+		ReviewID       uint      `gorm:"column:review_id"`
+		DialogueLineID uint      `gorm:"column:dialogue_line_id"`
+		OriginalText   string    `gorm:"column:original_text"`
+		Translation    string    `gorm:"column:translation"`
+		AudioPath      *string   `gorm:"column:audio_path"`
+		NextReviewAt   time.Time `gorm:"column:next_review_at"`
+		ReviewCount    int       `gorm:"column:review_count"`
+	}
+	var rows []row
+	err := s.db.WithContext(ctx).Raw(`
+		SELECT er.id AS review_id, er.dialogue_line_id,
+		       dl.original_text, dl.translation, dl.audio_path,
+		       er.next_review_at, er.review_count
+		FROM ebbinghaus_reviews er
+		JOIN dialogue_lines dl ON dl.id = er.dialogue_line_id
+		WHERE er.user_id = ?
+		ORDER BY er.next_review_at ASC`, userID).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("get review schedule: %w", err)
+	}
+	result := make([]reviewWithLineRow, len(rows))
+	for i, r := range rows {
+		result[i] = reviewWithLineRow{
+			ReviewID:       r.ReviewID,
+			DialogueLineID: r.DialogueLineID,
+			OriginalText:   r.OriginalText,
+			Translation:    r.Translation,
+			AudioPath:      r.AudioPath,
+			NextReviewAt:   r.NextReviewAt,
+			ReviewCount:    r.ReviewCount,
+		}
+	}
+	return result, nil
+}
+
 
 // Upsert inserts or updates an EbbinghausReview on (user_id, dialogue_line_id) conflict.
 func (s *gormStore) Upsert(ctx context.Context, review *EbbinghausReview) error {
