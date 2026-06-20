@@ -1,4 +1,4 @@
-import type { Dialogue, DialogueType, ReviewItem, UserLearningProfile } from '../types'
+import type { Dialogue, DialogueType, DialogueWithProgress, ReviewItem, UserLearningProfile } from '../types'
 
 const BASE = '/api/v1'
 
@@ -75,6 +75,48 @@ export function generateDialogue(
   payload: { topic: string; language: string; level: string },
 ): Promise<Dialogue> {
   return apiCall<Dialogue>(token, '/dialogue/generate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getSharedDialogue(
+  token: string,
+  topic: string,
+  language: string,
+  level: string,
+): Promise<DialogueWithProgress> {
+  return apiCall<DialogueWithProgress>(token, `/dialogue/shared?topic=${encodeURIComponent(topic)}&language=${language}&level=${level}`)
+}
+
+export function getActiveDialogue(token: string): Promise<DialogueWithProgress> {
+  return apiCall<DialogueWithProgress>(token, '/dialogue/active')
+}
+
+export function updateDialogueProgress(
+  token: string,
+  dialogueId: number,
+  lineIndex: number,
+  completed: boolean,
+): Promise<void> {
+  return apiCall<void>(token, `/dialogue/${dialogueId}/progress`, {
+    method: 'PUT',
+    body: JSON.stringify({ current_line_index: lineIndex, is_completed: completed }),
+  })
+}
+
+export function regenerateDialogue(
+  token: string,
+  payload: {
+    prev_dialogue_id: number
+    topic: string
+    language: string
+    level: string
+    hint: string
+    native_language: string
+  },
+): Promise<Dialogue> {
+  return apiCall<Dialogue>(token, '/dialogue/regenerate', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

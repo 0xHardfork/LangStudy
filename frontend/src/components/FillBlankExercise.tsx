@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Dialogue, DialogueLine } from '../types'
-import { submitAnswer } from '../services/api'
+import { submitAnswer, updateDialogueProgress } from '../services/api'
 
 // ─── AudioControls ──────────────────────────────────────────────────────────
 
@@ -202,15 +202,16 @@ interface Props {
   token: string
   dialogue: Dialogue
   fillBlankLevel: number
+  initialLineIndex?: number
   onFinish: (wrongCount: number) => void
   onLevelChange: (level: number) => void
   onBack: () => void
 }
 
 export default function FillBlankExercise({
-  token, dialogue, fillBlankLevel, onFinish, onLevelChange, onBack,
+  token, dialogue, fillBlankLevel, initialLineIndex = 0, onFinish, onLevelChange, onBack,
 }: Props) {
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(initialLineIndex)
   const [inputs, setInputs] = useState<Record<number, string>>({})
   const [submitted, setSubmitted] = useState(false)
   const [isCorrect, setIsCorrect] = useState(false)
@@ -302,11 +303,16 @@ export default function FillBlankExercise({
   }
 
   const handleNext = () => {
-    if (currentIndex + 1 >= dialogue.lines.length) {
+    const nextIdx = currentIndex + 1
+    if (nextIdx >= dialogue.lines.length) {
+      // Mark as completed
+      updateDialogueProgress(token, dialogue.id, nextIdx, true).catch(console.warn)
       onFinish(wrongCount)
       return
     }
-    setCurrentIndex((i) => i + 1)
+    // Save progress (fire-and-forget)
+    updateDialogueProgress(token, dialogue.id, nextIdx, false).catch(console.warn)
+    setCurrentIndex(nextIdx)
     setInputs({})
     setSubmitted(false)
     setIsCorrect(false)
@@ -315,7 +321,9 @@ export default function FillBlankExercise({
 
   const handlePrev = () => {
     if (currentIndex > 0) {
-      setCurrentIndex((i) => i - 1)
+      const prevIdx = currentIndex - 1
+      updateDialogueProgress(token, dialogue.id, prevIdx, false).catch(console.warn)
+      setCurrentIndex(prevIdx)
       setInputs({})
       setSubmitted(false)
       setIsCorrect(false)

@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"gorm.io/gorm"
@@ -10,12 +11,25 @@ import (
 
 // Store is the data access interface for Dialogue.
 type Store interface {
+	// Existing methods
 	CreateDialogue(ctx context.Context, d *Dialogue) error
 	CreateLine(ctx context.Context, line *DialogueLine) error
 	UpdateLineAudioPath(ctx context.Context, lineID uint, audioPath string) error
 	CreateVocabulary(ctx context.Context, items []VocabularyItem) error
 	GetDialogueByID(ctx context.Context, id, userID uint) (*Dialogue, error)
+	GetDialogueByIDPublic(ctx context.Context, id uint) (*Dialogue, error)
 	ListDialogues(ctx context.Context, userID uint) ([]Dialogue, error)
+
+	// Shared dialogue
+	GetSharedDialogue(ctx context.Context, topic, language, level string) (*Dialogue, error)
+	RegisterSharedDialogue(ctx context.Context, topic, language, level string, dialogueID uint) error
+	OverwriteSharedDialogue(ctx context.Context, topic, language, level string, dialogueID uint) error
+	MarkDialogueRejected(ctx context.Context, id uint) error
+
+	// Progress
+	GetActiveDialogue(ctx context.Context, userID uint) (*ActiveDialogueResult, error)
+	UpsertProgress(ctx context.Context, userID, dialogueID uint, lineIndex int, completed bool) error
+	GetProgress(ctx context.Context, userID, dialogueID uint) (*UserDialogueProgress, error)
 }
 
 type gormStore struct {
@@ -66,7 +80,7 @@ func (s *gormStore) CreateVocabulary(ctx context.Context, items []VocabularyItem
 	return nil
 }
 
-// GetDialogueByID retrieves a dialogue with all lines (ordered) and vocabulary (ordered).
+// GetDialogueByID retrieves a dialogue with all lines + vocabulary, filtered by user.
 func (s *gormStore) GetDialogueByID(ctx context.Context, id, userID uint) (*Dialogue, error) {
 	var d Dialogue
 	err := s.db.WithContext(ctx).
@@ -84,6 +98,24 @@ func (s *gormStore) GetDialogueByID(ctx context.Context, id, userID uint) (*Dial
 	return &d, nil
 }
 
+// GetDialogueByIDPublic retrieves a dialogue without user ownership check (used for shared dialogues).
+func (s *gormStore) GetDialogueByIDPublic(ctx context.Context, id uint) (*Dialogue, error) {
+	var d Dialogue
+	err := s.db.WithContext(ctx).
+		Where("id = ?", id).
+		Preload("Lines", func(db *gorm.DB) *gorm.DB {
+			return db.Order("line_index ASC")
+		}).
+		Preload("Lines.Vocabulary", func(db *gorm.DB) *gorm.DB {
+			return db.Order("word_index ASC")
+		}).
+		First(&d).Error
+	if err != nil {
+		return nil, fmt.Errorf("get dialogue (public): %w", err)
+	}
+	return &d, nil
+}
+
 // ListDialogues returns all dialogues for a user, most recent first.
 func (s *gormStore) ListDialogues(ctx context.Context, userID uint) ([]Dialogue, error) {
 	var dialogues []Dialogue
@@ -94,4 +126,112 @@ func (s *gormStore) ListDialogues(ctx context.Context, userID uint) ([]Dialogue,
 		return nil, fmt.Errorf("list dialogues: %w", err)
 	}
 	return dialogues, nil
+}
+
+// GetSharedDialogue returns the canonical dialogue for a (topic, language, level) combo.
+func (s *gormStore) GetSharedDialogue(ctx context.Context, topic, language, level string) (*Dialogue, error) {
+	var sd SharedDialogue
+	err := s.db.WithContext(ctx).
+		Where("topic = ? AND language = ? AND level = ?", topic, language, level).
+		First(&sd).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, gorm.ErrRecordNotFound
+		}
+		return nil, fmt.Errorf("get shared dialogue: %w", err)
+	}
+	return s.GetDialogueByIDPublic(ctx, sd.DialogueID)
+}
+
+// RegisterSharedDialogue inserts a shared dialogue entry; does nothing if one already exists.
+func (s *gormStore) RegisterSharedDialogue(ctx context.Context, topic, language, level string, dialogueID uint) error {
+	err := s.db.WithContext(ctx).Exec(`
+		INSERT INTO shared_dialogues (topic, language, level, dialogue_id)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (topic, language, level) DO NOTHING
+	`, topic, language, level, dialogueID).Error
+	if err != nil {
+		return fmt.Errorf("register shared dialogue: %w", err)
+	}
+	return nil
+}
+
+// OverwriteSharedDialogue upserts a shared dialogue, replacing the existing dialogue_id.
+func (s *gormStore) OverwriteSharedDialogue(ctx context.Context, topic, language, level string, dialogueID uint) error {
+	err := s.db.WithContext(ctx).Exec(`
+		INSERT INTO shared_dialogues (topic, language, level, dialogue_id, updated_at)
+		VALUES (?, ?, ?, ?, NOW())
+		ON CONFLICT (topic, language, level)
+		DO UPDATE SET dialogue_id = EXCLUDED.dialogue_id, updated_at = NOW()
+	`, topic, language, level, dialogueID).Error
+	if err != nil {
+		return fmt.Errorf("overwrite shared dialogue: %w", err)
+	}
+	return nil
+}
+
+// MarkDialogueRejected sets is_rejected = true for a dialogue.
+func (s *gormStore) MarkDialogueRejected(ctx context.Context, id uint) error {
+	if err := s.db.WithContext(ctx).
+		Model(&Dialogue{}).
+		Where("id = ?", id).
+		Update("is_rejected", true).Error; err != nil {
+		return fmt.Errorf("mark dialogue rejected: %w", err)
+	}
+	return nil
+}
+
+// GetActiveDialogue returns the most recently updated incomplete dialogue for the user.
+func (s *gormStore) GetActiveDialogue(ctx context.Context, userID uint) (*ActiveDialogueResult, error) {
+	var progress UserDialogueProgress
+	err := s.db.WithContext(ctx).
+		Where("user_id = ? AND is_completed = false", userID).
+		Order("updated_at DESC").
+		First(&progress).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get active dialogue progress: %w", err)
+	}
+	d, err := s.GetDialogueByIDPublic(ctx, progress.DialogueID)
+	if err != nil {
+		return nil, err
+	}
+	return &ActiveDialogueResult{
+		Dialogue:         d,
+		CurrentLineIndex: progress.CurrentLineIndex,
+	}, nil
+}
+
+// UpsertProgress creates or updates a user's progress record for a dialogue.
+func (s *gormStore) UpsertProgress(ctx context.Context, userID, dialogueID uint, lineIndex int, completed bool) error {
+	err := s.db.WithContext(ctx).Exec(`
+		INSERT INTO user_dialogue_progress (user_id, dialogue_id, current_line_index, is_completed, updated_at)
+		VALUES (?, ?, ?, ?, NOW())
+		ON CONFLICT (user_id, dialogue_id)
+		DO UPDATE SET
+			current_line_index = EXCLUDED.current_line_index,
+			is_completed       = EXCLUDED.is_completed,
+			updated_at         = NOW()
+	`, userID, dialogueID, lineIndex, completed).Error
+	if err != nil {
+		return fmt.Errorf("upsert progress: %w", err)
+	}
+	return nil
+}
+
+// GetProgress returns the user's progress record for a specific dialogue, or nil if none.
+func (s *gormStore) GetProgress(ctx context.Context, userID, dialogueID uint) (*UserDialogueProgress, error) {
+	var p UserDialogueProgress
+	err := s.db.WithContext(ctx).
+		Where("user_id = ? AND dialogue_id = ?", userID, dialogueID).
+		First(&p).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get progress: %w", err)
+	}
+	return &p, nil
 }

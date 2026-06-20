@@ -18,7 +18,11 @@ import (
 // Service defines the business logic interface for dialogue generation.
 type Service interface {
 	GetTopics(ctx context.Context) ([]dialoguetype.DialogueType, error)
+	GetSharedDialogue(ctx context.Context, topic, language, level string, userID uint) (*SharedDialogueResult, error)
+	GetActiveDialogue(ctx context.Context, userID uint) (*ActiveDialogueResult, error)
 	GenerateDialogue(ctx context.Context, userID uint, req *GenerateRequest) (*Dialogue, error)
+	RegenerateDialogue(ctx context.Context, userID uint, req *RegenerateRequest) (*Dialogue, error)
+	UpdateProgress(ctx context.Context, userID, dialogueID uint, lineIndex int, completed bool) error
 	GetDialogue(ctx context.Context, id, userID uint) (*Dialogue, error)
 	ListDialogues(ctx context.Context, userID uint) ([]Dialogue, error)
 }
@@ -28,7 +32,7 @@ type service struct {
 	llmStore  llmconfig.Store
 	typeStore dialoguetype.Store
 	log       *zap.Logger
-	staticDir string // base directory for static files, e.g. "static"
+	staticDir string
 }
 
 // NewService creates a new dialogue Service.
@@ -54,6 +58,35 @@ func (s *service) ListDialogues(ctx context.Context, userID uint) ([]Dialogue, e
 	return s.store.ListDialogues(ctx, userID)
 }
 
+// GetSharedDialogue returns the canonical dialogue for a (topic, language, level) combo,
+// along with the requesting user's progress on it.
+func (s *service) GetSharedDialogue(ctx context.Context, topic, language, level string, userID uint) (*SharedDialogueResult, error) {
+	d, err := s.store.GetSharedDialogue(ctx, topic, language, level)
+	if err != nil {
+		return nil, err
+	}
+	lineIndex := 0
+	if p, _ := s.store.GetProgress(ctx, userID, d.ID); p != nil {
+		if !p.IsCompleted {
+			lineIndex = p.CurrentLineIndex
+		}
+	}
+	return &SharedDialogueResult{
+		Dialogue:         d,
+		CurrentLineIndex: lineIndex,
+	}, nil
+}
+
+// GetActiveDialogue returns the user's most recently updated incomplete dialogue.
+func (s *service) GetActiveDialogue(ctx context.Context, userID uint) (*ActiveDialogueResult, error) {
+	return s.store.GetActiveDialogue(ctx, userID)
+}
+
+// UpdateProgress upserts the user's progress for a dialogue.
+func (s *service) UpdateProgress(ctx context.Context, userID, dialogueID uint, lineIndex int, completed bool) error {
+	return s.store.UpsertProgress(ctx, userID, dialogueID, lineIndex, completed)
+}
+
 // GenerateDialogue orchestrates LLM text generation + TTS audio + vocabulary rating.
 func (s *service) GenerateDialogue(ctx context.Context, userID uint, req *GenerateRequest) (*Dialogue, error) {
 	cfg, err := s.llmStore.Get(ctx)
@@ -67,6 +100,7 @@ func (s *service) GenerateDialogue(ctx context.Context, userID uint, req *Genera
 			req.TopicDescription = dt.Description
 		}
 	}
+
 	// --- Step 1: LLM call #1 — generate dialogue text ---
 	dialoguePrompt := buildDialoguePrompt(cfg.PromptTpl, req)
 	llmLines, err := s.callLLMForDialogue(ctx, cfg, dialoguePrompt)
@@ -121,7 +155,6 @@ func (s *service) GenerateDialogue(ctx context.Context, userID uint, req *Genera
 	if err != nil {
 		s.log.Warn("vocab rating failed, skipping", zap.Error(err))
 	} else {
-		// We need dialogue_line IDs by line_index — reload lines
 		full, fetchErr := s.store.GetDialogueByID(ctx, d.ID, userID)
 		if fetchErr == nil {
 			lineIDByIndex := make(map[int]uint, len(full.Lines))
@@ -147,8 +180,122 @@ func (s *service) GenerateDialogue(ctx context.Context, userID uint, req *Genera
 		}
 	}
 
-	// --- Step 5: Return complete dialogue ---
+	// --- Step 5: Register as shared dialogue (only if none exists yet) ---
+	if regErr := s.store.RegisterSharedDialogue(ctx, req.Topic, req.Language, req.Level, d.ID); regErr != nil {
+		s.log.Warn("register shared dialogue failed", zap.Error(regErr))
+	}
+
+	// --- Step 6: Return complete dialogue ---
 	return s.store.GetDialogueByID(ctx, d.ID, userID)
+}
+
+// RegenerateDialogue generates a new dialogue using user feedback, marks the old one as rejected,
+// and updates the shared dialogue pointer.
+func (s *service) RegenerateDialogue(ctx context.Context, userID uint, req *RegenerateRequest) (*Dialogue, error) {
+	cfg, err := s.llmStore.Get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load llm config: %w", err)
+	}
+
+	// Fetch topic description from DB
+	topicDesc := ""
+	if dt, lookupErr := s.typeStore.GetByName(ctx, req.Topic); lookupErr == nil {
+		topicDesc = dt.Description
+	}
+
+	// Build enriched prompt
+	genReq := &GenerateRequest{
+		Topic:            req.Topic,
+		Language:         req.Language,
+		Level:            req.Level,
+		TopicDescription: topicDesc,
+	}
+	dialoguePrompt := buildRegeneratePrompt(cfg.PromptTpl, genReq, req.Hint, req.NativeLanguage)
+	llmLines, err := s.callLLMForDialogue(ctx, cfg, dialoguePrompt)
+	if err != nil {
+		return nil, fmt.Errorf("llm regeneration: %w", err)
+	}
+	if len(llmLines) == 0 {
+		return nil, fmt.Errorf("llm returned empty dialogue on regeneration")
+	}
+
+	// Save new dialogue
+	d := &Dialogue{
+		UserID:   userID,
+		Language: req.Language,
+		Level:    req.Level,
+		Topic:    req.Topic,
+	}
+	if err := s.store.CreateDialogue(ctx, d); err != nil {
+		return nil, fmt.Errorf("save regenerated dialogue: %w", err)
+	}
+
+	ttsCtx, ttsCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer ttsCancel()
+
+	for i, ll := range llmLines {
+		line := &DialogueLine{
+			DialogueID:   d.ID,
+			LineIndex:    i,
+			Speaker:      ll.Speaker,
+			OriginalText: ll.OriginalText,
+			Translation:  ll.Translation,
+		}
+		if err := s.store.CreateLine(ctx, line); err != nil {
+			return nil, fmt.Errorf("save regen line %d: %w", i, err)
+		}
+		relPath := fmt.Sprintf("%s/audio/%d/%d.mp3", s.staticDir, d.ID, i)
+		if ttsErr := generateAudio(ttsCtx, ll.OriginalText, req.Language, ll.Speaker, relPath); ttsErr != nil {
+			s.log.Warn("tts regen failed", zap.Int("line", i), zap.Error(ttsErr))
+		} else {
+			if err := s.store.UpdateLineAudioPath(ctx, line.ID, relPath); err != nil {
+				s.log.Warn("update audio_path failed", zap.Int("line", i), zap.Error(err))
+			}
+		}
+	}
+
+	// Vocab rating (non-fatal)
+	vocabPrompt := buildVocabPrompt(llmLines)
+	vocabItems, err := s.callLLMForVocab(ctx, cfg, vocabPrompt)
+	if err != nil {
+		s.log.Warn("vocab rating failed on regen", zap.Error(err))
+	} else {
+		full, fetchErr := s.store.GetDialogueByIDPublic(ctx, d.ID)
+		if fetchErr == nil {
+			lineIDByIndex := make(map[int]uint, len(full.Lines))
+			for _, l := range full.Lines {
+				lineIDByIndex[l.LineIndex] = l.ID
+			}
+			dbItems := make([]VocabularyItem, 0, len(vocabItems))
+			for _, v := range vocabItems {
+				lineID, ok := lineIDByIndex[v.LineIndex]
+				if !ok {
+					continue
+				}
+				dbItems = append(dbItems, VocabularyItem{
+					DialogueLineID: lineID,
+					Word:           v.Word,
+					WordIndex:      v.WordIndex,
+					Importance:     v.Importance,
+				})
+			}
+			if saveErr := s.store.CreateVocabulary(ctx, dbItems); saveErr != nil {
+				s.log.Warn("save vocab on regen failed", zap.Error(saveErr))
+			}
+		}
+	}
+
+	// Mark old dialogue as rejected
+	if markErr := s.store.MarkDialogueRejected(ctx, req.PrevDialogueID); markErr != nil {
+		s.log.Warn("mark dialogue rejected failed", zap.Error(markErr))
+	}
+
+	// Update shared dialogue to point to new one
+	if ovErr := s.store.OverwriteSharedDialogue(ctx, req.Topic, req.Language, req.Level, d.ID); ovErr != nil {
+		s.log.Warn("overwrite shared dialogue failed", zap.Error(ovErr))
+	}
+
+	return s.store.GetDialogueByIDPublic(ctx, d.ID)
 }
 
 // --- LLM helpers ---
@@ -252,7 +399,7 @@ func cleanJSON(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// buildDialoguePrompt constructs the first LLM prompt.
+// buildDialoguePrompt constructs the first LLM prompt for a new dialogue.
 func buildDialoguePrompt(tpl string, req *GenerateRequest) string {
 	if tpl != "" {
 		r := strings.NewReplacer(
@@ -272,6 +419,22 @@ The dialogue should have exactly 16 lines, alternating between speaker A (female
 Return ONLY a JSON array with no other text, in this exact format:
 [{"speaker":"A","original_text":"<text in %s>","translation":"<Chinese translation>"},...]`,
 		req.Language, req.Level, req.Topic, descHint, req.Language)
+}
+
+// buildRegeneratePrompt constructs the LLM prompt for regeneration with user feedback.
+func buildRegeneratePrompt(tpl string, req *GenerateRequest, hint, nativeLang string) string {
+	base := buildDialoguePrompt(tpl, req)
+
+	extras := []string{}
+	if nativeLang != "" {
+		extras = append(extras, fmt.Sprintf("Learner's native language: %s", nativeLang))
+	}
+	if hint != "" {
+		extras = append(extras, fmt.Sprintf("User feedback on previous dialogue: \"%s\"", hint))
+	}
+	extras = append(extras, "Please generate a COMPLETELY DIFFERENT dialogue from the previous version, incorporating the user's feedback.")
+
+	return base + "\n\n" + strings.Join(extras, "\n")
 }
 
 // buildVocabPrompt constructs the second LLM prompt for vocabulary rating.

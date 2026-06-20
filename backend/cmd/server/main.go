@@ -151,7 +151,11 @@ func main() {
 
 			authed.GET("/dialogue/topics", dialogueHandler.GetTopics)
 			authed.GET("/dialogue/types", typeHandler.List)
+			authed.GET("/dialogue/active", dialogueHandler.GetActiveDialogue)
+			authed.GET("/dialogue/shared", dialogueHandler.GetSharedDialogue)
 			authed.POST("/dialogue/generate", dialogueHandler.Generate)
+			authed.POST("/dialogue/regenerate", dialogueHandler.RegenerateDialogue)
+			authed.PUT("/dialogue/:id/progress", dialogueHandler.UpdateProgress)
 			authed.GET("/dialogue/:id", dialogueHandler.GetDialogue)
 			authed.GET("/dialogue", dialogueHandler.ListDialogues)
 

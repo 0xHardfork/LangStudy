@@ -49,8 +49,16 @@ export interface Dialogue {
   language: string
   level: string
   topic: string
+  is_rejected: boolean
   lines: DialogueLine[]
   created_at: string
+}
+
+// ─── Shared / Progress Results ────────────────────────────────────────────────────
+
+export interface DialogueWithProgress {
+  dialogue: Dialogue
+  current_line_index: number
 }
 
 // ─── Dialogue Types ────────────────────────────────────────────────────────

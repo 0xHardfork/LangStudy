@@ -7,7 +7,8 @@ import FillBlankExercise from './components/FillBlankExercise'
 import ReviewExercise from './components/ReviewExercise'
 import UserProfileModal from './components/UserProfileModal'
 import LearningHistory from './components/LearningHistory'
-import { getLearningProfile, generateDialogue, getDialogueTypes } from './services/api'
+import DialoguePreview from './components/DialoguePreview'
+import { getLearningProfile, generateDialogue, getDialogueTypes, getSharedDialogue, getActiveDialogue, updateDialogueProgress } from './services/api'
 import { useAppStore } from './store/useAppStore'
 import { LEVEL_LABELS } from './types'
 import type { TargetLanguage, UserLearningProfile, DialogueType } from './types'
@@ -32,6 +33,7 @@ export default function App() {
     selectedTopic, setSelectedTopic,
     setSelectedLanguage,
     currentDialogue, setCurrentDialogue,
+    previewLineIndex, setPreviewLineIndex,
     fillBlankLevel, setFillBlankLevel,
     generatingError, setGeneratingError,
     exerciseResult, setExerciseResult,
@@ -88,8 +90,20 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleStartLearning = () => {
+  const handleStartLearning = async () => {
     setExerciseResult(null)
+    // Check if user has an in-progress dialogue
+    try {
+      const active = await getActiveDialogue(token!)
+      if (active) {
+        setCurrentDialogue(active.dialogue)
+        setPreviewLineIndex(active.current_line_index)
+        setView('preview')
+        return
+      }
+    } catch {
+      // No active dialogue — fall through to topic selection
+    }
     setView('topic-select')
   }
 
@@ -113,16 +127,23 @@ export default function App() {
   }
 
   const beginGenerate = async (topic: string, lang: TargetLanguage) => {
+    // First check if a shared dialogue already exists for this combo
+    try {
+      const shared = await getSharedDialogue(token!, topic, lang.lang, lang.level)
+      setCurrentDialogue(shared.dialogue)
+      setPreviewLineIndex(shared.current_line_index)
+      setView('preview')
+      return
+    } catch {
+      // No shared dialogue — generate a new one
+    }
     setView('generating')
     setGeneratingError(null)
     try {
-      const d = await generateDialogue(token!, {
-        topic,
-        language: lang.lang,
-        level: lang.level,
-      })
+      const d = await generateDialogue(token!, { topic, language: lang.lang, level: lang.level })
       setCurrentDialogue(d)
-      setView('fill-blank')
+      setPreviewLineIndex(0)
+      setView('preview')
     } catch (e: unknown) {
       setGeneratingError((e as Error).message ?? '生成失败')
       setView('home')
@@ -145,12 +166,44 @@ export default function App() {
 
   if (user?.role === 'admin') return <AdminDashboard token={token} onLogout={handleLogout} user={user} />
 
+  if (currentView === 'preview' && currentDialogue) {
+    return (
+      <DialoguePreview
+        token={token}
+        dialogue={currentDialogue}
+        initialLineIndex={previewLineIndex}
+        learningProfile={learningProfile}
+        onStart={() => {
+          // Mark as started (upsert progress at current line index, not completed)
+          updateDialogueProgress(token!, currentDialogue.id, previewLineIndex, false)
+            .catch(console.warn)
+          setView('fill-blank')
+        }}
+        onRegenerate={(newDialogue) => {
+          setCurrentDialogue(newDialogue)
+          setPreviewLineIndex(0)
+          // Stay on preview
+        }}
+        onSelectNewTopic={() => {
+          setCurrentDialogue(null)
+          setView('topic-select')
+        }}
+        onBack={() => {
+          setCurrentDialogue(null)
+          setView('home')
+        }}
+      />
+    )
+  }
+
   if (currentView === 'fill-blank' && currentDialogue) {
     return (
       <FillBlankExercise
+        key={`${currentDialogue.id}-${previewLineIndex}`}
         token={token}
         dialogue={currentDialogue}
         fillBlankLevel={fillBlankLevel}
+        initialLineIndex={previewLineIndex}
         onFinish={handleExerciseFinish}
         onLevelChange={setFillBlankLevel}
         onBack={() => {
@@ -171,6 +224,7 @@ export default function App() {
         token={token}
         onSelectDialogue={(d) => {
           setCurrentDialogue(d)
+          setPreviewLineIndex(0)
           setView('fill-blank')
         }}
         onBack={() => setView('home')}
