@@ -84,6 +84,7 @@ export interface ReviewItem {
   audio_path: string | null
   next_review_at: string
   review_count: number
+  vocabulary: VocabularyItem[]
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────

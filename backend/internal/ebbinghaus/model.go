@@ -3,6 +3,8 @@ package ebbinghaus
 import (
 	"context"
 	"time"
+
+	"github.com/0xHardfork/langstudy/internal/dialogue"
 )
 
 // ReviewIntervals defines the spaced repetition intervals in days.
@@ -27,13 +29,14 @@ type SubmitAnswerRequest struct {
 
 // ReviewWithLine is the response type that includes dialogue line context.
 type ReviewWithLine struct {
-	ID             uint    `json:"id"`
-	DialogueLineID uint    `json:"dialogue_line_id"`
-	OriginalText   string  `json:"original_text"`
-	Translation    string  `json:"translation"`
-	AudioPath      *string `json:"audio_path"`
-	NextReviewAt   string  `json:"next_review_at"`
-	ReviewCount    int     `json:"review_count"`
+	ID             uint                      `json:"id"`
+	DialogueLineID uint                      `json:"dialogue_line_id"`
+	OriginalText   string                    `json:"original_text"`
+	Translation    string                    `json:"translation"`
+	AudioPath      *string                   `json:"audio_path"`
+	NextReviewAt   string                    `json:"next_review_at"`
+	ReviewCount    int                       `json:"review_count"`
+	Vocabulary     []dialogue.VocabularyItem `json:"vocabulary"`
 }
 
 // Service defines the business logic interface for Ebbinghaus reviews.

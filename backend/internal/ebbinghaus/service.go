@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/0xHardfork/langstudy/internal/dialogue"
 )
 
 type svc struct {
@@ -21,8 +23,28 @@ func (s *svc) GetDueReviews(ctx context.Context, userID uint) ([]ReviewWithLine,
 	if err != nil {
 		return nil, fmt.Errorf("get due reviews: %w", err)
 	}
+
+	lineIDs := make([]uint, len(rows))
+	for i, r := range rows {
+		lineIDs[i] = r.DialogueLineID
+	}
+
+	vocabItems, err := s.store.GetVocabularyForLines(ctx, lineIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get vocabulary for due reviews: %w", err)
+	}
+
+	vocabMap := make(map[uint][]dialogue.VocabularyItem)
+	for _, item := range vocabItems {
+		vocabMap[item.DialogueLineID] = append(vocabMap[item.DialogueLineID], item)
+	}
+
 	result := make([]ReviewWithLine, len(rows))
 	for i, r := range rows {
+		vocab := vocabMap[r.DialogueLineID]
+		if vocab == nil {
+			vocab = []dialogue.VocabularyItem{}
+		}
 		result[i] = ReviewWithLine{
 			ID:             r.ReviewID,
 			DialogueLineID: r.DialogueLineID,
@@ -31,6 +53,7 @@ func (s *svc) GetDueReviews(ctx context.Context, userID uint) ([]ReviewWithLine,
 			AudioPath:      r.AudioPath,
 			NextReviewAt:   r.NextReviewAt.Format(time.RFC3339),
 			ReviewCount:    r.ReviewCount,
+			Vocabulary:     vocab,
 		}
 	}
 	return result, nil
@@ -42,8 +65,28 @@ func (s *svc) GetReviewSchedule(ctx context.Context, userID uint) ([]ReviewWithL
 	if err != nil {
 		return nil, fmt.Errorf("get review schedule: %w", err)
 	}
+
+	lineIDs := make([]uint, len(rows))
+	for i, r := range rows {
+		lineIDs[i] = r.DialogueLineID
+	}
+
+	vocabItems, err := s.store.GetVocabularyForLines(ctx, lineIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get vocabulary for review schedule: %w", err)
+	}
+
+	vocabMap := make(map[uint][]dialogue.VocabularyItem)
+	for _, item := range vocabItems {
+		vocabMap[item.DialogueLineID] = append(vocabMap[item.DialogueLineID], item)
+	}
+
 	result := make([]ReviewWithLine, len(rows))
 	for i, r := range rows {
+		vocab := vocabMap[r.DialogueLineID]
+		if vocab == nil {
+			vocab = []dialogue.VocabularyItem{}
+		}
 		result[i] = ReviewWithLine{
 			ID:             r.ReviewID,
 			DialogueLineID: r.DialogueLineID,
@@ -52,6 +95,7 @@ func (s *svc) GetReviewSchedule(ctx context.Context, userID uint) ([]ReviewWithL
 			AudioPath:      r.AudioPath,
 			NextReviewAt:   r.NextReviewAt.Format(time.RFC3339),
 			ReviewCount:    r.ReviewCount,
+			Vocabulary:     vocab,
 		}
 	}
 	return result, nil

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/0xHardfork/langstudy/internal/dialogue"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -15,6 +16,7 @@ type Store interface {
 	GetReviewSchedule(ctx context.Context, userID uint) ([]reviewWithLineRow, error)
 	Upsert(ctx context.Context, review *EbbinghausReview) error
 	GetByUserAndLine(ctx context.Context, userID, dialogueLineID uint) (*EbbinghausReview, error)
+	GetVocabularyForLines(ctx context.Context, lineIDs []uint) ([]dialogue.VocabularyItem, error)
 }
 
 // reviewWithLineRow is an internal join result.
@@ -143,3 +145,19 @@ func (s *gormStore) GetByUserAndLine(ctx context.Context, userID, dialogueLineID
 	}
 	return &r, nil
 }
+
+func (s *gormStore) GetVocabularyForLines(ctx context.Context, lineIDs []uint) ([]dialogue.VocabularyItem, error) {
+	if len(lineIDs) == 0 {
+		return nil, nil
+	}
+	var items []dialogue.VocabularyItem
+	err := s.db.WithContext(ctx).
+		Where("dialogue_line_id IN ?", lineIDs).
+		Order("word_index ASC").
+		Find(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("get vocabulary for lines: %w", err)
+	}
+	return items, nil
+}
+

@@ -61,12 +61,121 @@ function AudioControls({ audioPath, lineIdx }: { audioPath: string | null; lineI
   )
 }
 
+function ListPlayButton({ audioPath }: { audioPath: string }) {
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const play = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+    const a = new Audio('/' + audioPath)
+    a.onended = () => setPlaying(false)
+    a.onerror = () => setPlaying(false)
+    audioRef.current = a
+    setPlaying(true)
+    a.play().catch((err) => {
+      console.error(err)
+      setPlaying(false)
+    })
+  }
+
+  const stop = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+      audioRef.current = null
+    }
+    setPlaying(false)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+    }
+  }, [])
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        if (playing) {
+          stop()
+        } else {
+          play()
+        }
+      }}
+      title={playing ? "停止" : "播放语音"}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: '1.25rem',
+        padding: '0.25rem 0.5rem',
+        borderRadius: '0.375rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: playing ? '#c084fc' : '#94a3b8',
+        transition: 'all 0.15s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'scale(1.15)'
+        e.currentTarget.style.color = '#c084fc'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'scale(1)'
+        e.currentTarget.style.color = playing ? '#c084fc' : '#94a3b8'
+      }}
+    >
+      {playing ? '⏸' : '🔊'}
+    </button>
+  )
+}
+
 interface Props {
   token: string
+  fillBlankLevel: number
   onFinish: () => void
 }
 
-export default function ReviewExercise({ token, onFinish }: Props) {
+function tokenize(text: string): string[] {
+  return text.includes(' ') ? text.split(' ') : text.split('')
+}
+
+function splitToken(token: string): { prefix: string; clean: string; suffix: string } {
+  const isPunctuation = (char: string) => {
+    return /^[^\p{L}\p{N}]+$/u.test(char)
+  }
+
+  let start = 0
+  while (start < token.length && isPunctuation(token[start])) {
+    start++
+  }
+
+  let end = token.length
+  while (end > start && isPunctuation(token[end - 1])) {
+    end--
+  }
+
+  return {
+    prefix: token.slice(0, start),
+    clean: token.slice(start, end),
+    suffix: token.slice(end),
+  }
+}
+
+function getBlankIndices(vocabulary: any[], level: number): Set<number> {
+  if (level === 4) return new Set()
+  const sorted = [...vocabulary].sort((a, b) => a.importance - b.importance)
+  const sliced = sorted.slice(0, level)
+  return new Set(sliced.map((v) => v.word_index))
+}
+
+export default function ReviewExercise({ token, fillBlankLevel, onFinish }: Props) {
   const [reviews, setReviews] = useState<ReviewItem[]>([])
   const [allReviews, setAllReviews] = useState<ReviewItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -74,11 +183,10 @@ export default function ReviewExercise({ token, onFinish }: Props) {
   const [showChart, setShowChart] = useState(true)
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
   const [currentIdx, setCurrentIdx] = useState(0)
-  const [input, setInput] = useState('')
+  const [inputs, setInputs] = useState<Record<number, string>>({})
   const [submitted, setSubmitted] = useState(false)
   const [isCorrect, setIsCorrect] = useState(false)
   const [doneCount, setDoneCount] = useState(0)
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   // Fetch reviews and all scheduled items
   useEffect(() => {
@@ -91,17 +199,35 @@ export default function ReviewExercise({ token, onFinish }: Props) {
       .finally(() => setLoading(false))
   }, [token])
 
-  // Focus textarea when starting/switching reviews
+  // Focus first blank input when starting/switching reviews
   useEffect(() => {
     if (!showChart && reviews.length > 0 && currentIdx < reviews.length) {
-      const timer = setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus()
-        }
-      }, 50)
-      return () => clearTimeout(timer)
+      const item = reviews[currentIdx]
+      const tokens = tokenize(item.original_text)
+      const blankIndices = fillBlankLevel === 4
+        ? new Set(
+            tokens
+              .map((tok, idx) => {
+                const { clean } = splitToken(tok)
+                return clean.length > 0 ? idx : -1
+              })
+              .filter((idx) => idx !== -1)
+          )
+        : getBlankIndices(item.vocabulary || [], fillBlankLevel)
+
+      if (blankIndices.size > 0) {
+        const sorted = Array.from(blankIndices).sort((a, b) => a - b)
+        const firstIdx = sorted[0]
+        const timer = setTimeout(() => {
+          const el = document.getElementById(`review-blank-${currentIdx}-${firstIdx}`)
+          if (el) {
+            el.focus()
+          }
+        }, 50)
+        return () => clearTimeout(timer)
+      }
     }
-  }, [currentIdx, reviews.length, showChart])
+  }, [currentIdx, reviews.length, showChart, fillBlankLevel])
 
   // Focus next button after submit
   useEffect(() => {
@@ -302,7 +428,7 @@ export default function ReviewExercise({ token, onFinish }: Props) {
                       </span>
                     </div>
                     {item.audio_path && (
-                      <span style={{ fontSize: '1rem' }}>🔊</span>
+                      <ListPlayButton audioPath={item.audio_path} />
                     )}
                   </div>
                 ))
@@ -387,17 +513,44 @@ export default function ReviewExercise({ token, onFinish }: Props) {
   )
 
   const item = reviews[currentIdx]
-  const normalize = (s: string) => {
-    return s
-      .trim()
-      .toLowerCase()
-      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
+
+  const handleInput = (idx: number, val: string) => {
+    setInputs((prev) => ({ ...prev, [idx]: val }))
+  }
+
+  const checkAnswer = (): boolean => {
+    const normalize = (s: string) => {
+      return s
+        .trim()
+        .toLowerCase()
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    }
+    const tokens = tokenize(item.original_text)
+    const blankIndices = fillBlankLevel === 4
+      ? new Set(
+          tokens
+            .map((tok, idx) => {
+              const { clean } = splitToken(tok)
+              return clean.length > 0 ? idx : -1
+            })
+            .filter((idx) => idx !== -1)
+        )
+      : getBlankIndices(item.vocabulary || [], fillBlankLevel)
+
+    for (const idx of blankIndices) {
+      const given = normalize(inputs[idx] ?? '')
+      const tok = tokens[idx] ?? ''
+      const { clean } = splitToken(tok)
+      const expected = normalize(clean)
+      if (given !== expected) return false
+    }
+    return true
   }
 
   const handleSubmit = async () => {
-    const correct = normalize(input) === normalize(item.original_text)
+    const correct = checkAnswer()
     setIsCorrect(correct)
     setSubmitted(true)
     setDoneCount((c) => c + 1)
@@ -410,7 +563,7 @@ export default function ReviewExercise({ token, onFinish }: Props) {
 
   const handleNext = () => {
     setCurrentIdx((i) => i + 1)
-    setInput('')
+    setInputs({})
     setSubmitted(false)
     setIsCorrect(false)
   }
@@ -418,11 +571,23 @@ export default function ReviewExercise({ token, onFinish }: Props) {
   const handlePrev = () => {
     if (currentIdx > 0) {
       setCurrentIdx((i) => i - 1)
-      setInput('')
+      setInputs({})
       setSubmitted(false)
       setIsCorrect(false)
     }
   }
+
+  const tokens = tokenize(item.original_text)
+  const blankIndices = fillBlankLevel === 4
+    ? new Set(
+        tokens
+          .map((tok, idx) => {
+            const { clean } = splitToken(tok)
+            return clean.length > 0 ? idx : -1
+          })
+          .filter((idx) => idx !== -1)
+      )
+    : getBlankIndices(item.vocabulary || [], fillBlankLevel)
 
   return (
     <div style={{ minHeight: '100vh', background: '#020617', color: '#f1f5f9', display: 'flex', flexDirection: 'column' }}>
@@ -454,31 +619,81 @@ export default function ReviewExercise({ token, onFinish }: Props) {
               </p>
             )}
 
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={submitted}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  if (!submitted) {
-                    handleSubmit()
-                  } else {
-                    handleNext()
-                  }
+            {/* Fill-blank area */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.5rem 0.625rem',
+              alignItems: 'center',
+              lineHeight: 1.8,
+              marginTop: '1.5rem',
+              marginBottom: '1.5rem',
+            }}>
+              {tokens.map((tok, idx) => {
+                const { prefix, clean, suffix } = splitToken(tok)
+                if (blankIndices.has(idx)) {
+                  const given = inputs[idx] ?? ''
+                  const correct = given.trim().toLowerCase() === clean.toLowerCase()
+                  return (
+                    <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.125rem' }}>
+                      {prefix && <span style={{ color: '#e2e8f0', fontSize: '1.25rem' }}>{prefix}</span>}
+                      <input
+                        id={`review-blank-${currentIdx}-${idx}`}
+                        value={given}
+                        onChange={(e) => handleInput(idx, e.target.value)}
+                        disabled={submitted}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            const sorted = Array.from(blankIndices).sort((a, b) => a - b)
+                            const unfilled = sorted.filter(i => {
+                              if (i === idx) {
+                                return !e.currentTarget.value.trim()
+                              }
+                              return !(inputs[i] ?? '').trim()
+                            })
+                            if (unfilled.length > 0) {
+                              const nextEl = document.getElementById(`review-blank-${currentIdx}-${unfilled[0]}`)
+                              if (nextEl) {
+                                nextEl.focus()
+                              }
+                            } else {
+                              const btn = document.getElementById('btn-submit-review')
+                              if (btn) {
+                                btn.focus()
+                              }
+                            }
+                          }
+                        }}
+                        style={{
+                          width: `${Math.max(clean.length * 0.8, 3.5)}rem`,
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '0.375rem',
+                          border: submitted
+                            ? (correct ? '2px solid #22c55e' : '2px solid #ef4444')
+                            : '2px dashed rgba(124,58,237,0.6)',
+                          background: submitted
+                            ? (correct ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)')
+                            : 'rgba(124,58,237,0.15)',
+                          color: '#f1f5f9',
+                          fontSize: '1.25rem',
+                          textAlign: 'center',
+                          outline: 'none',
+                          transition: 'all 0.15s ease',
+                        }}
+                        placeholder="___"
+                      />
+                      {suffix && <span style={{ color: '#e2e8f0', fontSize: '1.25rem' }}>{suffix}</span>}
+                    </span>
+                  )
                 }
-              }}
-              placeholder="请输入完整句子..."
-              rows={3}
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '0.75rem',
-                borderRadius: '0.625rem',
-                border: submitted ? (isCorrect ? '2px solid #22c55e' : '2px solid #ef4444') : '1px solid rgba(100,116,139,0.3)',
-                background: 'rgba(15,23,42,0.6)', color: '#f1f5f9',
-                fontSize: '1.125rem', resize: 'vertical', outline: 'none',
-              }}
-            />
+                return (
+                  <span key={idx} style={{ color: '#e2e8f0', fontSize: '1.25rem' }}>
+                    {tok}
+                  </span>
+                )
+              })}
+            </div>
 
             {submitted && (
               <div style={{ marginTop: '1rem', padding: '0.75rem', borderRadius: '0.625rem', background: isCorrect ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${isCorrect ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: isCorrect ? '#86efac' : '#fca5a5', fontSize: '0.9375rem', fontWeight: 600 }}>

@@ -221,7 +221,7 @@ export default function App() {
   }
 
   if (currentView === 'review') {
-    return <ReviewExercise token={token} onFinish={() => setView('home')} />
+    return <ReviewExercise token={token} fillBlankLevel={fillBlankLevel} onFinish={() => setView('home')} />
   }
 
   if (currentView === 'history') {
