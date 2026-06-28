@@ -8,6 +8,7 @@ import ReviewExercise from './components/ReviewExercise'
 import UserProfileModal from './components/UserProfileModal'
 import LearningHistory from './components/LearningHistory'
 import DialoguePreview from './components/DialoguePreview'
+import GrammarDashboard from './components/GrammarDashboard'
 import { getLearningProfile, generateDialogue, getDialogueTypes, getSharedDialogue, getActiveDialogue, updateDialogueProgress } from './services/api'
 import { useAppStore } from './store/useAppStore'
 import { LEVEL_LABELS } from './types'
@@ -238,6 +239,10 @@ export default function App() {
     )
   }
 
+  if (currentView === 'grammar') {
+    return <GrammarDashboard token={token} onBack={() => setView('home')} />
+  }
+
   const activeTargetLang = learningProfile?.target_languages?.[0]
 
   return (
@@ -390,6 +395,15 @@ export default function App() {
             gradient="linear-gradient(135deg,#1a2e1a,#1a2a2e)"
             hoverGradient="linear-gradient(135deg,#14532d,#0c4a6e)"
             onClick={() => setView('review')}
+          />
+          <ActionCard
+            id="btn-start-grammar"
+            emoji="📖"
+            title="文章语法分析"
+            desc="分析英语段落，学习语法并进行完形填空测试"
+            gradient="linear-gradient(135deg,#2d1a3c,#1e113c)"
+            hoverGradient="linear-gradient(135deg,#5c1d7c,#2c0c4d)"
+            onClick={() => setView('grammar')}
           />
           <ActionCard
             id="btn-start-history"

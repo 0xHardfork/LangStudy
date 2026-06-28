@@ -1,4 +1,4 @@
-import type { Dialogue, DialogueType, DialogueWithProgress, ReviewItem, UserLearningProfile } from '../types'
+import type { Dialogue, DialogueType, DialogueWithProgress, ReviewItem, UserLearningProfile, GrammarArticle, GrammarQuizReviewDetail, GrammarSentence } from '../types'
 
 const BASE = '/api/v1'
 
@@ -149,3 +149,41 @@ export function submitAnswer(
     body: JSON.stringify(payload),
   })
 }
+
+// ─── Grammar ───────────────────────────────────────────────────────────────
+
+export function analyzeText(token: string, title: string, text: string): Promise<GrammarArticle> {
+  return apiCall<GrammarArticle>(token, '/grammar/analyze', {
+    method: 'POST',
+    body: JSON.stringify({ title, text }),
+  })
+}
+
+export function getGrammarHistory(token: string): Promise<GrammarArticle[]> {
+  return apiCall<GrammarArticle[]>(token, '/grammar/history')
+}
+
+export function getAnalyzedArticle(token: string, id: number): Promise<GrammarArticle> {
+  return apiCall<GrammarArticle>(token, `/grammar/article/${id}`)
+}
+
+export function submitGrammarAnswer(
+  token: string,
+  payload: { grammar_quiz_id: number; is_correct: boolean },
+): Promise<void> {
+  return apiCall<void>(token, '/grammar/quiz/answer', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getDueGrammarReviews(token: string): Promise<GrammarQuizReviewDetail[]> {
+  return apiCall<GrammarQuizReviewDetail[]>(token, '/grammar/reviews/due')
+}
+
+export function regenerateGrammarSentence(token: string, sentenceId: number): Promise<GrammarSentence> {
+  return apiCall<GrammarSentence>(token, `/grammar/sentence/${sentenceId}/regenerate`, {
+    method: 'POST',
+  })
+}
+

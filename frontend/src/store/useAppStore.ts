@@ -10,6 +10,7 @@ export type AppView =
   | 'fill-blank'
   | 'review'
   | 'history'
+  | 'grammar'
 
 interface AppState {
   currentView: AppView

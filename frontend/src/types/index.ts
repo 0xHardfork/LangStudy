@@ -87,6 +87,56 @@ export interface ReviewItem {
   vocabulary: VocabularyItem[]
 }
 
+// ─── Grammar ───────────────────────────────────────────────────────────────
+
+export interface GrammarQuiz {
+  id: number
+  sentence_id: number
+  question: string
+  options: string[]
+  correct_option: number
+  explanations: Record<number, string>
+  tags: string[]
+  created_at: string
+}
+
+export interface GrammarSentence {
+  id: number
+  article_id: number
+  sentence_index: number
+  original_text: string
+  translation: string
+  explanation: string
+  audio_path: string | null
+  quizzes: GrammarQuiz[]
+  created_at: string
+}
+
+export interface GrammarArticle {
+  id: number
+  user_id: number
+  title: string
+  raw_text: string
+  sentences?: GrammarSentence[]
+  created_at: string
+}
+
+export interface GrammarQuizReviewDetail {
+  review_id: number
+  grammar_quiz_id: number
+  question: string
+  options: string[]
+  correct_option: number
+  explanations: Record<number, string>
+  tags: string[]
+  next_review_at: string
+  review_count: number
+  sentence_text: string
+  sentence_trans: string
+  sentence_explain: string
+  audio_path: string | null
+}
+
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 export const LANGUAGE_LABELS: Record<string, string> = {

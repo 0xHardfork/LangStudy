@@ -14,6 +14,7 @@ import (
 	"github.com/0xHardfork/langstudy/internal/dialogue"
 	"github.com/0xHardfork/langstudy/internal/dialoguetype"
 	"github.com/0xHardfork/langstudy/internal/ebbinghaus"
+	"github.com/0xHardfork/langstudy/internal/grammar"
 	"github.com/0xHardfork/langstudy/internal/llmconfig"
 	"github.com/0xHardfork/langstudy/internal/user"
 	"github.com/0xHardfork/langstudy/internal/userprofile"
@@ -119,6 +120,10 @@ func main() {
 	ebbService := ebbinghaus.NewService(ebbStore)
 	ebbHandler := ebbinghaus.NewHandler(ebbService)
 
+	grammarStore := grammar.NewStore(db)
+	grammarService := grammar.NewService(grammarStore, llmService, log)
+	grammarHandler := grammar.NewHandler(grammarService)
+
 	// 10. Router
 	ginMode := gin.DebugMode
 	if cfg.App.Env == "production" {
@@ -162,6 +167,14 @@ func main() {
 			authed.GET("/reviews/due", ebbHandler.GetDueReviews)
 			authed.GET("/reviews/schedule", ebbHandler.GetReviewSchedule)
 			authed.POST("/reviews/answer", ebbHandler.SubmitAnswer)
+
+			// Grammar study routes
+			authed.POST("/grammar/analyze", grammarHandler.Analyze)
+			authed.GET("/grammar/history", grammarHandler.GetHistory)
+			authed.GET("/grammar/article/:id", grammarHandler.GetArticle)
+			authed.POST("/grammar/quiz/answer", grammarHandler.SubmitAnswer)
+			authed.GET("/grammar/reviews/due", grammarHandler.GetDueReviews)
+			authed.POST("/grammar/sentence/:id/regenerate", grammarHandler.RegenerateSentence)
 		}
 
 		adminGroup := api.Group("/admin")
