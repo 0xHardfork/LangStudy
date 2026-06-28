@@ -23,6 +23,11 @@
   - `"user not found: %w"` 会透传到前端，暴露用户是否注册
   - 修复：两种情况统一返回 `"invalid credentials"`
 
+- [ ] **数据完整性漏洞：`GenerateDialogue` / `RegenerateDialogue` 缺少事务保护**
+  - 文件：`internal/dialogue/service.go` L121-L150
+  - 对话头部、对话行、单词分级是分成多次独立的 db Create 操作。如果中途有任何一行出错或 TTS 失败抛错，会导致数据库残留无 Line / 无 rating 的孤儿 Dialogue 头部脏数据。
+  - 修复：使用 GORM 的 `Transaction` 回滚块包裹整个 Dialogue 保存链路。
+
 ---
 
 ## 🔴 性能问题（严重影响体验）
@@ -37,6 +42,11 @@
   - 文件：`internal/grammar/service.go` L361
   - 每次重试都新建 Client，TCP 连接无法复用，存在 fd 泄漏风险
   - 修复：将 `httpClient` 提升为 `svc` 字段，`NewService` 时初始化一次
+
+- [ ] **`GenerateDialogue` 的 TTS 语音生成是串行阻塞执行的**
+  - 文件：`internal/dialogue/service.go` L129-L150
+  - 生成对话时，每句话依次调用 `generateAudio` 生成 MP3，当对话行数较多时，HTTP 请求在 TTS 阶段会面临极大的串行阻塞延时。
+  - 修复：在 Dialogue 生成中引入并发处理，使用 `errgroup` 并行化执行 `generateAudio` 请求。
 
 ---
 
@@ -79,6 +89,11 @@
   - `strings.Split(trimmed, ",")` 在 tag 内容含逗号时会错误切分
   - 修复：使用 `github.com/lib/pq` 的 `pq.Array` 或 `jackc/pgtype`
 
+- [ ] **闲置资产：Redis 连接被初始化，但从未被任何业务服务使用**
+  - 文件：`cmd/server/main.go` L84-L91
+  - 项目配置并启动了 Redis 容器及连接，但在初始化各 Store/Service 时从未传入 Redis 客户端，目前属于完全闲置的资源。
+  - 修复：决定是否使用 Redis 缓存用户 Profile 等高频读取数据，或者在不需要时直接从主程序和 docker-compose 中裁撤 Redis 服务。
+
 ---
 
 ## 🟡 目录结构重组
@@ -103,6 +118,30 @@
 - [ ] **`migrations/fs.go` 应移出 SQL 目录**
   - SQL 文件目录混入 Go 源码，职责不纯
   - 修复：将 `fs.go`（embed + RunMigrations）移到 `platform/database/migrate.go`
+
+---
+
+## 🟡 Gin 最佳实践与代码规范
+
+- [ ] **GORM 日志桥接：GORM 采用 `Silent` 模式，屏蔽了 SQL 错误与慢查询排查**
+  - 文件：`platform/database/postgres.go` L14
+  - 目前数据库调用为静默模式，若发生 SQL 报错或慢查询，无法在系统日志中显式暴露。
+  - 修复：编写自定义 GORM Logger，将 SQL 执行信息、警告和错误重定向到全局 Zap 日志中，并设定慢查询阈值（如 200ms）。
+
+- [ ] **结构化 Panic 恢复：`gin.Recovery()` 将 Panic 堆栈输出为非结构化文本**
+  - 文件：`cmd/server/main.go` L135
+  - 发生 Panic 时，堆栈信息直接打到 stderr 中，无法被日志系统（ELK、Stackdriver 等）进行 JSON 格式的统一聚合。
+  - 修复：集成自定义的 Zap Panic Recovery 中间件，将崩溃堆栈及上下文参数以结构化 JSON 格式写入 Zap 日志。
+
+- [ ] **路由注册模块化：`main.go` 承载了全站所有路由的分组与声明，过于臃肿**
+  - 文件：`cmd/server/main.go` L145-L196
+  - 随着业务接口增加，`main.go` 中的路由声明会无限延长，违反职责单一原则。
+  - 修复：采用模块化路由挂载，各业务模块（如 user, grammar, dialogue）对外提供 `RegisterRoutes(rg *gin.RouterGroup)` 方法，`main.go` 仅负责分发子路由组。
+
+- [ ] **参数校验报错友好化：`ShouldBindJSON` 出错直接向用户暴露 validator 内部校验文案**
+  - 文件：各模块 `handler.go`
+  - 参数校验失败时返回 `err.Error()`，例如 `Key: 'RegisterRequest.Username' Error:Field validation...`，严重影响用户体验。
+  - 修复：集成 `go-playground/validator/v10` 的翻译器（Translator），将校验报错信息转换为用户可读的中文文案（如“用户名长度必须至少为3位”）。
 
 ---
 
