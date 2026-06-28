@@ -5,8 +5,9 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // JSONOptions is a JSONB-backed slice of strings for quiz options.
@@ -73,46 +74,15 @@ func (je *JSONExplanations) Scan(value interface{}) error {
 type PostgresTags []string
 
 func (pt PostgresTags) Value() (driver.Value, error) {
-	if len(pt) == 0 {
-		return "{}", nil
-	}
-	quoted := make([]string, len(pt))
-	for i, s := range pt {
-		escaped := strings.ReplaceAll(s, "\\", "\\\\")
-		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
-		quoted[i] = "\"" + escaped + "\""
-	}
-	return "{" + strings.Join(quoted, ",") + "}", nil
+	return pq.Array([]string(pt)).Value()
 }
 
 func (pt *PostgresTags) Scan(value interface{}) error {
-	if value == nil {
-		*pt = PostgresTags{}
-		return nil
+	var a []string
+	if err := pq.Array(&a).Scan(value); err != nil {
+		return err
 	}
-	var str string
-	switch v := value.(type) {
-	case string:
-		str = v
-	case []byte:
-		str = string(v)
-	default:
-		return fmt.Errorf("unsupported type for PostgresTags: %T", value)
-	}
-	if str == "{}" || str == "" {
-		*pt = PostgresTags{}
-		return nil
-	}
-	trimmed := strings.Trim(str, "{}")
-	parts := strings.Split(trimmed, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.Trim(p, "\"")
-		p = strings.ReplaceAll(p, "\\\"", "\"")
-		p = strings.ReplaceAll(p, "\\\\", "\\")
-		result = append(result, p)
-	}
-	*pt = result
+	*pt = PostgresTags(a)
 	return nil
 }
 
@@ -197,11 +167,11 @@ type SubmitQuizAnswerRequest struct {
 // Service defines the business logic interface for grammar study.
 type Service interface {
 	AnalyzeText(ctx context.Context, userID uint, req *AnalyzeRequest) (*GrammarArticle, error)
-	GetHistory(ctx context.Context) ([]GrammarArticle, error)
-	GetArticle(ctx context.Context, id uint) (*GrammarArticle, error)
+	GetHistory(ctx context.Context, userID uint) ([]GrammarArticle, error)
+	GetArticle(ctx context.Context, id, userID uint) (*GrammarArticle, error)
 	RecordAnswer(ctx context.Context, userID uint, req *SubmitQuizAnswerRequest) error
 	GetDueReviews(ctx context.Context, userID uint) ([]GrammarQuizReviewDetail, error)
-	RegenerateSentence(ctx context.Context, sentenceID uint) (*GrammarSentence, error)
+	RegenerateSentence(ctx context.Context, userID, sentenceID uint) (*GrammarSentence, error)
 }
 
 // GrammarQuizReviewDetail holds the quiz details alongside the review progress.

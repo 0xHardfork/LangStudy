@@ -4,22 +4,26 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/0xHardfork/langstudy/platform/auth"
+	"github.com/0xHardfork/langstudy/platform/config"
 	"github.com/0xHardfork/langstudy/platform/response"
+	"github.com/0xHardfork/langstudy/platform/validator"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
 	svc Service
+	cfg *config.Config
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc Service, cfg *config.Config) *Handler {
+	return &Handler{svc: svc, cfg: cfg}
 }
 
 func (h *Handler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error())
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
 		return
 	}
 
@@ -34,45 +38,45 @@ func (h *Handler) Register(c *gin.Context) {
 func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error())
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
 		return
 	}
 
-	token, err := h.svc.Login(c.Request.Context(), &req)
+	token, prof, err := h.svc.Login(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	response.Success(c, http.StatusOK, gin.H{"token": token})
+	c.SetCookie("token", token, 3600*h.cfg.JWT.ExpireHours, "/", "", h.cfg.App.Env == "production", true)
+
+	response.Success(c, http.StatusOK, prof)
+}
+
+func (h *Handler) Logout(c *gin.Context) {
+	c.SetCookie("token", "", -1, "/", "", h.cfg.App.Env == "production", true)
+	response.Success(c, http.StatusOK, nil)
 }
 
 func (h *Handler) GetProfile(c *gin.Context) {
-	raw, exists := c.Get("userID")
-	if !exists {
+	userID, err := auth.CurrentUserID(c)
+	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	userID, ok := raw.(uint)
-	if !ok {
-		response.Fail(c, http.StatusInternalServerError, "invalid user id type")
-		return
-	}
-
-	profile, err := h.svc.GetProfile(c.Request.Context(), userID)
+	prof, err := h.svc.GetProfile(c.Request.Context(), userID)
 	if err != nil {
-		response.Fail(c, http.StatusNotFound, err.Error())
+		response.Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	response.Success(c, http.StatusOK, profile)
+	response.Success(c, http.StatusOK, prof)
 }
 
 func (h *Handler) CreateUser(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error())
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
 		return
 	}
 
@@ -85,8 +89,8 @@ func (h *Handler) CreateUser(c *gin.Context) {
 }
 
 func (h *Handler) DeleteUser(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := strconv.ParseUint(idParam, 10, 32)
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		response.Fail(c, http.StatusBadRequest, "invalid user id")
 		return
@@ -101,24 +105,76 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 }
 
 func (h *Handler) ListUsers(c *gin.Context) {
-	offsetStr := c.DefaultQuery("offset", "0")
-	limitStr := c.DefaultQuery("limit", "100")
+	pageStr := c.DefaultQuery("page", "1")
+	pageSizeStr := c.DefaultQuery("page_size", "20")
 
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil {
-		offset = 0
-	}
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil {
-		limit = 100
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
 	}
 
-	users, err := h.svc.ListUsers(c.Request.Context(), offset, limit)
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize < 1 {
+		pageSize = 20
+	}
+
+	offset := (page - 1) * pageSize
+
+	list, err := h.svc.ListUsers(c.Request.Context(), offset, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	response.Success(c, http.StatusOK, users)
+	response.Success(c, http.StatusOK, list)
 }
 
+func (h *Handler) GetLearningProfile(c *gin.Context) {
+	userID, err := auth.CurrentUserID(c)
+	if err != nil {
+		response.Fail(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	profile, err := h.svc.GetLearningProfile(c.Request.Context(), userID)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, profile)
+}
+
+func (h *Handler) UpsertLearningProfile(c *gin.Context) {
+	userID, err := auth.CurrentUserID(c)
+	if err != nil {
+		response.Fail(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req UpsertProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
+		return
+	}
+
+	profile, err := h.svc.UpsertLearningProfile(c.Request.Context(), userID, &req)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, profile)
+}
+
+func (h *Handler) RegisterRoutes(public *gin.RouterGroup, authed *gin.RouterGroup, admin *gin.RouterGroup) {
+	public.POST("/register", h.Register)
+	public.POST("/login", h.Login)
+	public.POST("/logout", h.Logout)
+
+	authed.GET("/profile", h.GetProfile)
+	authed.GET("/me/profile", h.GetLearningProfile)
+	authed.PUT("/me/profile", h.UpsertLearningProfile)
+
+	admin.GET("/users", h.ListUsers)
+	admin.POST("/users", h.CreateUser)
+	admin.DELETE("/users/:id", h.DeleteUser)
+}

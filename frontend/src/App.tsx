@@ -16,8 +16,8 @@ import { useAppStore } from './store/useAppStore'
 import { updateDialogueProgress } from './services/api'
 
 const RequireAuth = () => {
-  const token = useAppStore((state) => state.token)
-  if (!token) return <Navigate to="/login" replace />
+  const user = useAppStore((state) => state.user)
+  if (!user) return <Navigate to="/login" replace />
   return <Outlet />
 }
 
@@ -35,7 +35,7 @@ const RequireUser = () => {
 
 function AppContent() {
   const { token, user, currentDialogue, fillBlankLevel, previewLineIndex, learningProfile } = useAppStore()
-  const { setToken, setCurrentDialogue, setPreviewLineIndex, setExerciseResult, setFillBlankLevel, setLearningProfile } = useAppStore()
+  const { setUser, setCurrentDialogue, setPreviewLineIndex, setExerciseResult, setFillBlankLevel, setLearningProfile } = useAppStore()
   const [showProfileModal, setShowProfileModal] = useState(false)
   const { loading, logout } = useAuth()
   const { refreshData } = useUserData()
@@ -53,7 +53,7 @@ function AppContent() {
     <>
       <Routes>
         <Route path="/login" element={
-          token ? <Navigate to="/" replace /> : <Login onLoginSuccess={(t) => setToken(t)} />
+          user ? <Navigate to="/" replace /> : <Login onLoginSuccess={(u) => setUser(u)} />
         } />
 
         {/* Protected Routes */}

@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/spf13/viper"
+	"github.com/0xHardfork/langstudy/platform/config"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -46,10 +46,10 @@ func Setup(ctx context.Context) (func(), error) {
 		return nil, fmt.Errorf("get postgres port: %w", err)
 	}
 
-	viper.Set("postgres.host", pgHost)
-	viper.Set("postgres.port", int(pgPort.Num()))
-	viper.Set("postgres.password", "postgres")
-	viper.Set("postgres.dbname", "langstudy")
+	config.Viper().Set("postgres.host", pgHost)
+	config.Viper().Set("postgres.port", int(pgPort.Num()))
+	config.Viper().Set("postgres.password", "postgres")
+	config.Viper().Set("postgres.dbname", "langstudy")
 
 	redisContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -75,8 +75,8 @@ func Setup(ctx context.Context) (func(), error) {
 		return nil, fmt.Errorf("get redis port: %w", err)
 	}
 
-	viper.Set("redis.host", redisHost)
-	viper.Set("redis.port", int(redisPort.Num()))
+	config.Viper().Set("redis.host", redisHost)
+	config.Viper().Set("redis.port", int(redisPort.Num()))
 
 	return func() {}, nil
 }

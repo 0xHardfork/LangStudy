@@ -1,13 +1,10 @@
 package grammar
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xHardfork/langstudy/internal/llmconfig"
+	"github.com/0xHardfork/langstudy/internal/ebbinghaus"
+	"github.com/0xHardfork/langstudy/platform/llm"
+	"github.com/0xHardfork/langstudy/platform/llmconfig"
 	"go.uber.org/zap"
 )
 
@@ -25,14 +24,15 @@ type svc struct {
 	store  Store
 	llmSvc llmconfig.Service
 	log    *zap.Logger
+	llmCli *llm.Client
 }
 
-// NewService creates a new grammar Service.
-func NewService(store Store, llmSvc llmconfig.Service, log *zap.Logger) Service {
+func NewService(store Store, llmSvc llmconfig.Service, log *zap.Logger, llmCli *llm.Client) Service {
 	return &svc{
 		store:  store,
 		llmSvc: llmSvc,
 		log:    log,
+		llmCli: llmCli,
 	}
 }
 
@@ -124,23 +124,7 @@ var trailingCommaRx = regexp.MustCompile(`,\s*([\}\]])`)
 
 func repairJSON(s string) string {
 	s = strings.TrimSpace(s)
-	// Remove trailing commas before } or ]
 	s = trailingCommaRx.ReplaceAllString(s, "$1")
-
-	// Balance braces
-	openBraces := strings.Count(s, "{")
-	closeBraces := strings.Count(s, "}")
-	if openBraces > closeBraces {
-		s = s + strings.Repeat("}", openBraces-closeBraces)
-	}
-
-	// Balance brackets
-	openBrackets := strings.Count(s, "[")
-	closeBrackets := strings.Count(s, "]")
-	if openBrackets > closeBrackets {
-		s = s + strings.Repeat("]", openBrackets-closeBrackets)
-	}
-
 	return s
 }
 
@@ -157,107 +141,126 @@ func (s *svc) AnalyzeText(ctx context.Context, userID uint, req *AnalyzeRequest)
 
 	folderName := fmt.Sprintf("%d", time.Now().UnixNano())
 
-	var sentences []GrammarSentence
+	sentences := make([]GrammarSentence, len(rawSentences))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5)
+
 	for idx, sText := range rawSentences {
-		audioRelPath := fmt.Sprintf("static/audio/grammar/%s/%d.mp3", folderName, idx)
-		ttsErr := s.generateAudio(ctx, sText, audioRelPath)
-		var audioPathPtr *string
-		if ttsErr == nil {
-			audioPathPtr = &audioRelPath
-		} else {
-			s.log.Warn("tts generation failed for grammar sentence", zap.String("sentence", sText), zap.Error(ttsErr))
-		}
+		wg.Add(1)
+		go func(idx int, sText string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		prompt := fmt.Sprintf(grammarPromptTemplate, sText)
-		llmOutput, err := s.callLLM(ctx, cfg, prompt)
-		if err != nil {
-			s.log.Warn("failed to call LLM for grammar analysis", zap.String("sentence", sText), zap.Error(err))
-			sentence := GrammarSentence{
-				SentenceIndex: idx,
-				OriginalText:  sText,
-				Translation:   "（AI 翻译失败）",
-				Explanation:   fmt.Sprintf("AI 语法分析失败，错误信息: %v\n请稍后重新提交该文章尝试。", err),
-				AudioPath:     audioPathPtr,
-				CreatedAt:     time.Now(),
+			if ctx.Err() != nil {
+				sentences[idx] = GrammarSentence{
+					SentenceIndex: idx,
+					OriginalText:  sText,
+					Translation:   "（未分析，请求已被取消或超时）",
+					Explanation:   "处理已取消。",
+					CreatedAt:     time.Now(),
+				}
+				return
 			}
-			sentences = append(sentences, sentence)
-			continue
-		}
 
-		cleanedJSON := cleanJSONMarkdown(llmOutput)
-		repairedJSON := repairJSON(cleanedJSON)
-
-		var parsed struct {
-			Translation string            `json:"translation"`
-			Explanation string            `json:"explanation"`
-			Quiz        struct {
-				Question      string                 `json:"question"`
-				Options       []string               `json:"options"`
-				CorrectOption int                    `json:"correct_option"`
-				Explanations  map[string]interface{} `json:"explanations"`
-				Tags          []string               `json:"tags"`
-			} `json:"quiz"`
-		}
-
-		if err := json.Unmarshal([]byte(repairedJSON), &parsed); err != nil {
-			s.log.Warn("failed to unmarshal grammar analysis response", zap.String("output", llmOutput), zap.Error(err))
-			sentence := GrammarSentence{
-				SentenceIndex: idx,
-				OriginalText:  sText,
-				Translation:   "（AI 格式解析失败）",
-				Explanation:   fmt.Sprintf("AI 原始分析输出如下：\n%s", llmOutput),
-				AudioPath:     audioPathPtr,
-				CreatedAt:     time.Now(),
+			audioRelPath := fmt.Sprintf("static/audio/grammar/%s/%d.mp3", folderName, idx)
+			ttsErr := s.generateAudio(ctx, sText, audioRelPath)
+			var audioPathPtr *string
+			if ttsErr == nil {
+				audioPathPtr = &audioRelPath
+			} else {
+				s.log.Warn("tts generation failed for grammar sentence", zap.String("sentence", sText), zap.Error(ttsErr))
 			}
-			sentences = append(sentences, sentence)
-			continue
-		}
 
-		// Handle tags nested inside explanations or convert non-string explanations safely
-		cleanExplanations := make(map[string]string)
-		for k, v := range parsed.Quiz.Explanations {
-			if k == "tags" {
-				if parsed.Quiz.Tags == nil || len(parsed.Quiz.Tags) == 0 {
-					if slice, ok := v.([]interface{}); ok {
-						for _, item := range slice {
-							if str, ok := item.(string); ok {
-								parsed.Quiz.Tags = append(parsed.Quiz.Tags, str)
+			prompt := fmt.Sprintf(grammarPromptTemplate, sText)
+			llmOutput, err := s.llmCli.Call(ctx, cfg.ApiUrl, cfg.ApiKey, cfg.ModelName, prompt)
+			if err != nil {
+				s.log.Warn("failed to call LLM for grammar analysis", zap.String("sentence", sText), zap.Error(err))
+				sentences[idx] = GrammarSentence{
+					SentenceIndex: idx,
+					OriginalText:  sText,
+					Translation:   "（AI 翻译失败）",
+					Explanation:   fmt.Sprintf("AI 语法分析失败，错误信息: %v\n请稍后重新提交该文章尝试。", err),
+					AudioPath:     audioPathPtr,
+					CreatedAt:     time.Now(),
+				}
+				return
+			}
+
+			cleanedJSON := cleanJSONMarkdown(llmOutput)
+			repairedJSON := repairJSON(cleanedJSON)
+
+			var parsed struct {
+				Translation string            `json:"translation"`
+				Explanation string            `json:"explanation"`
+				Quiz        struct {
+					Question      string                 `json:"question"`
+					Options       []string               `json:"options"`
+					CorrectOption int                    `json:"correct_option"`
+					Explanations  map[string]interface{} `json:"explanations"`
+					Tags          []string               `json:"tags"`
+				} `json:"quiz"`
+			}
+
+			if err := json.Unmarshal([]byte(repairedJSON), &parsed); err != nil {
+				s.log.Warn("failed to unmarshal grammar analysis response", zap.String("output", llmOutput), zap.Error(err))
+				sentences[idx] = GrammarSentence{
+					SentenceIndex: idx,
+					OriginalText:  sText,
+					Translation:   "（AI 格式解析失败）",
+					Explanation:   fmt.Sprintf("AI 原始分析输出如下：\n%s", llmOutput),
+					AudioPath:     audioPathPtr,
+					CreatedAt:     time.Now(),
+				}
+				return
+			}
+
+			cleanExplanations := make(map[string]string)
+			for k, v := range parsed.Quiz.Explanations {
+				if k == "tags" {
+					if parsed.Quiz.Tags == nil || len(parsed.Quiz.Tags) == 0 {
+						if slice, ok := v.([]interface{}); ok {
+							for _, item := range slice {
+								if str, ok := item.(string); ok {
+									parsed.Quiz.Tags = append(parsed.Quiz.Tags, str)
+								}
 							}
 						}
 					}
+					continue
 				}
-				continue
+				if str, ok := v.(string); ok {
+					cleanExplanations[k] = str
+				} else {
+					cleanExplanations[k] = fmt.Sprintf("%v", v)
+				}
 			}
-			if str, ok := v.(string); ok {
-				cleanExplanations[k] = str
-			} else {
-				cleanExplanations[k] = fmt.Sprintf("%v", v)
-			}
-		}
 
-		sentence := GrammarSentence{
-			SentenceIndex: idx,
-			OriginalText:  sText,
-			Translation:   parsed.Translation,
-			Explanation:   parsed.Explanation,
-			AudioPath:     audioPathPtr,
-			CreatedAt:     time.Now(),
-		}
-
-		if parsed.Quiz.Question != "" && len(parsed.Quiz.Options) == 4 {
-			quiz := GrammarQuiz{
-				Question:      parsed.Quiz.Question,
-				Options:       JSONOptions(parsed.Quiz.Options),
-				CorrectOption: parsed.Quiz.CorrectOption,
-				Explanations:  JSONExplanations(cleanExplanations),
-				Tags:          PostgresTags(parsed.Quiz.Tags),
+			sentence := GrammarSentence{
+				SentenceIndex: idx,
+				OriginalText:  sText,
+				Translation:   parsed.Translation,
+				Explanation:   parsed.Explanation,
+				AudioPath:     audioPathPtr,
 				CreatedAt:     time.Now(),
 			}
-			sentence.Quizzes = append(sentence.Quizzes, quiz)
-		}
 
-		sentences = append(sentences, sentence)
+			if parsed.Quiz.Question != "" && len(parsed.Quiz.Options) == 4 {
+				quiz := GrammarQuiz{
+					Question:      parsed.Quiz.Question,
+					Options:       JSONOptions(parsed.Quiz.Options),
+					CorrectOption: parsed.Quiz.CorrectOption,
+					Explanations:  JSONExplanations(cleanExplanations),
+					Tags:          PostgresTags(parsed.Quiz.Tags),
+					CreatedAt:     time.Now(),
+				}
+				sentence.Quizzes = append(sentence.Quizzes, quiz)
+			}
+
+			sentences[idx] = sentence
+		}(idx, sText)
 	}
+	wg.Wait()
 
 	art := &GrammarArticle{
 		UserID:    userID,
@@ -274,12 +277,12 @@ func (s *svc) AnalyzeText(ctx context.Context, userID uint, req *AnalyzeRequest)
 	return art, nil
 }
 
-func (s *svc) GetHistory(ctx context.Context) ([]GrammarArticle, error) {
-	return s.store.GetArticles(ctx)
+func (s *svc) GetHistory(ctx context.Context, userID uint) ([]GrammarArticle, error) {
+	return s.store.GetArticles(ctx, userID)
 }
 
-func (s *svc) GetArticle(ctx context.Context, id uint) (*GrammarArticle, error) {
-	return s.store.GetArticle(ctx, id)
+func (s *svc) GetArticle(ctx context.Context, id, userID uint) (*GrammarArticle, error) {
+	return s.store.GetArticle(ctx, id, userID)
 }
 
 func (s *svc) RecordAnswer(ctx context.Context, userID uint, req *SubmitQuizAnswerRequest) error {
@@ -299,19 +302,17 @@ func (s *svc) RecordAnswer(ctx context.Context, userID uint, req *SubmitQuizAnsw
 		}
 	}
 
-	intervals := []int{1, 3, 7, 14, 30}
-
 	if req.IsCorrect {
 		review.ReviewCount++
-		if review.ReviewCount >= len(intervals) {
+		if review.ReviewCount >= len(ebbinghaus.ReviewIntervals) {
 			review.NextReviewAt = now.AddDate(1, 0, 0)
 		} else {
-			days := intervals[review.ReviewCount]
+			days := ebbinghaus.ReviewIntervals[review.ReviewCount]
 			review.NextReviewAt = now.AddDate(0, 0, days)
 		}
 	} else {
 		review.ReviewCount = 0
-		review.NextReviewAt = now.AddDate(0, 0, intervals[0])
+		review.NextReviewAt = now.AddDate(0, 0, ebbinghaus.ReviewIntervals[0])
 	}
 	review.UpdatedAt = now
 
@@ -322,96 +323,7 @@ func (s *svc) GetDueReviews(ctx context.Context, userID uint) ([]GrammarQuizRevi
 	return s.store.GetDueReviews(ctx, userID)
 }
 
-// --- LLM helper ---
 
-type llmMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type llmRequest struct {
-	Model    string       `json:"model"`
-	Messages []llmMessage `json:"messages"`
-}
-
-type llmChoice struct {
-	Message llmMessage `json:"message"`
-}
-
-type llmResponse struct {
-	Choices []llmChoice `json:"choices"`
-}
-
-func (s *svc) callLLM(ctx context.Context, cfg *llmconfig.LLMConfig, prompt string) (string, error) {
-	var lastErr error
-	backoff := 1 * time.Second
-
-	for attempt := 1; attempt <= 3; attempt++ {
-		reqBody := llmRequest{
-			Model: cfg.ModelName,
-			Messages: []llmMessage{
-				{Role: "user", Content: prompt},
-			},
-		}
-		bodyBytes, err := json.Marshal(reqBody)
-		if err != nil {
-			return "", fmt.Errorf("marshal llm request: %w", err)
-		}
-
-		httpClient := &http.Client{Timeout: 120 * time.Second}
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.ApiUrl, bytes.NewReader(bodyBytes))
-		if err != nil {
-			return "", fmt.Errorf("build llm request: %w", err)
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Authorization", "Bearer "+cfg.ApiKey)
-
-		resp, err := httpClient.Do(httpReq)
-		if err != nil {
-			lastErr = fmt.Errorf("attempt %d failed to call llm: %w", attempt, err)
-			s.log.Warn("llm call network error, retrying", zap.Int("attempt", attempt), zap.Error(err))
-			select {
-			case <-ctx.Done():
-				return "", ctx.Err()
-			case <-time.After(backoff):
-			}
-			backoff *= 2
-			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			lastErr = fmt.Errorf("attempt %d llm returned %d: %s", attempt, resp.StatusCode, string(body))
-			
-			// If it's a transient rate limit (429) or service unavailable (503), retry!
-			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
-				s.log.Warn("llm returned transient error, retrying", zap.Int("attempt", attempt), zap.Int("status", resp.StatusCode))
-				select {
-				case <-ctx.Done():
-					return "", ctx.Err()
-				case <-time.After(backoff):
-				}
-				backoff *= 2
-				continue
-			}
-			return "", lastErr
-		}
-
-		var llmResp llmResponse
-		err = json.NewDecoder(resp.Body).Decode(&llmResp)
-		resp.Body.Close()
-		if err != nil {
-			return "", fmt.Errorf("decode llm response: %w", err)
-		}
-		if len(llmResp.Choices) == 0 {
-			return "", fmt.Errorf("llm returned no choices")
-		}
-		return llmResp.Choices[0].Message.Content, nil
-	}
-
-	return "", fmt.Errorf("llm call failed after 3 attempts: %w", lastErr)
-}
 
 // --- TTS helpers ---
 
@@ -463,7 +375,7 @@ func (s *svc) generateAudio(ctx context.Context, text, outputPath string) error 
 	return nil
 }
 
-func (s *svc) RegenerateSentence(ctx context.Context, sentenceID uint) (*GrammarSentence, error) {
+func (s *svc) RegenerateSentence(ctx context.Context, userID, sentenceID uint) (*GrammarSentence, error) {
 	cfg, err := s.llmSvc.GetConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get llm config: %w", err)
@@ -475,6 +387,14 @@ func (s *svc) RegenerateSentence(ctx context.Context, sentenceID uint) (*Grammar
 	}
 	if sent == nil {
 		return nil, fmt.Errorf("sentence not found")
+	}
+
+	art, err := s.store.GetArticle(ctx, sent.ArticleID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if art == nil {
+		return nil, fmt.Errorf("unauthorized")
 	}
 
 	// Overwrite/regenerate the edge-tts audio if it is missing
@@ -490,7 +410,7 @@ func (s *svc) RegenerateSentence(ctx context.Context, sentenceID uint) (*Grammar
 	}
 
 	prompt := fmt.Sprintf(grammarPromptTemplate, sent.OriginalText)
-	llmOutput, err := s.callLLM(ctx, cfg, prompt)
+	llmOutput, err := s.llmCli.Call(ctx, cfg.ApiUrl, cfg.ApiKey, cfg.ModelName, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("AI re-analysis failed: %w", err)
 	}

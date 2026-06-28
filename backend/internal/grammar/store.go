@@ -13,8 +13,8 @@ import (
 // Store defines database operations for the grammar package.
 type Store interface {
 	CreateArticle(ctx context.Context, art *GrammarArticle) error
-	GetArticles(ctx context.Context) ([]GrammarArticle, error)
-	GetArticle(ctx context.Context, id uint) (*GrammarArticle, error)
+	GetArticles(ctx context.Context, userID uint) ([]GrammarArticle, error)
+	GetArticle(ctx context.Context, id, userID uint) (*GrammarArticle, error)
 	GetReview(ctx context.Context, userID, quizID uint) (*GrammarReview, error)
 	UpsertReview(ctx context.Context, review *GrammarReview) error
 	GetDueReviews(ctx context.Context, userID uint) ([]GrammarQuizReviewDetail, error)
@@ -39,23 +39,24 @@ func (s *gormStore) CreateArticle(ctx context.Context, art *GrammarArticle) erro
 	return nil
 }
 
-func (s *gormStore) GetArticles(ctx context.Context) ([]GrammarArticle, error) {
+func (s *gormStore) GetArticles(ctx context.Context, userID uint) ([]GrammarArticle, error) {
 	var list []GrammarArticle
-	err := s.db.WithContext(ctx).Order("created_at desc").Find(&list).Error
+	err := s.db.WithContext(ctx).Where("user_id = ?", userID).Order("created_at desc").Find(&list).Error
 	if err != nil {
 		return nil, fmt.Errorf("get grammar articles: %w", err)
 	}
 	return list, nil
 }
 
-func (s *gormStore) GetArticle(ctx context.Context, id uint) (*GrammarArticle, error) {
+func (s *gormStore) GetArticle(ctx context.Context, id, userID uint) (*GrammarArticle, error) {
 	var art GrammarArticle
 	err := s.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", id, userID).
 		Preload("Sentences", func(db *gorm.DB) *gorm.DB {
 			return db.Order("grammar_sentences.sentence_index asc")
 		}).
 		Preload("Sentences.Quizzes").
-		First(&art, id).Error
+		First(&art).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil

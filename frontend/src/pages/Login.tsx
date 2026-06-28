@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 
 interface LoginProps {
-  onLoginSuccess: (token: string) => void
+  onLoginSuccess: (user: any) => void
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
@@ -54,10 +54,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           throw new Error(result.msg || 'Authentication failed')
         }
 
-        if (result.data && result.data.token) {
-          onLoginSuccess(result.data.token)
+        if (result.data) {
+          onLoginSuccess(result.data)
         } else {
-          throw new Error('Token not received')
+          throw new Error('User profile not received')
         }
       } else {
         const response = await fetch('/api/v1/register', {
@@ -88,10 +88,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           throw new Error('Registered successfully, but login failed')
         }
 
-        if (loginResult.data && loginResult.data.token) {
-          onLoginSuccess(loginResult.data.token)
+        if (loginResult.data) {
+          onLoginSuccess(loginResult.data)
         } else {
-          throw new Error('Token not received after registration')
+          throw new Error('User profile not received after registration')
         }
       }
     } catch (err: unknown) {

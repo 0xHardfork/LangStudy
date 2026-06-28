@@ -5,22 +5,21 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/0xHardfork/langstudy/platform/auth"
 	"github.com/0xHardfork/langstudy/platform/response"
+	"github.com/0xHardfork/langstudy/platform/validator"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-// Handler handles HTTP requests for dialogue operations.
 type Handler struct {
 	svc Service
 }
 
-// NewHandler creates a new Handler.
 func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// GetTopics handles GET /api/v1/dialogue/topics
 func (h *Handler) GetTopics(c *gin.Context) {
 	types, err := h.svc.GetTopics(c.Request.Context())
 	if err != nil {
@@ -30,9 +29,8 @@ func (h *Handler) GetTopics(c *gin.Context) {
 	response.Success(c, http.StatusOK, types)
 }
 
-// GetSharedDialogue handles GET /api/v1/dialogue/shared?topic=X&language=Y&level=Z
 func (h *Handler) GetSharedDialogue(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -56,9 +54,8 @@ func (h *Handler) GetSharedDialogue(c *gin.Context) {
 	response.Success(c, http.StatusOK, result)
 }
 
-// GetActiveDialogue handles GET /api/v1/dialogue/active
 func (h *Handler) GetActiveDialogue(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -75,9 +72,8 @@ func (h *Handler) GetActiveDialogue(c *gin.Context) {
 	response.Success(c, http.StatusOK, result)
 }
 
-// Generate handles POST /api/v1/dialogue/generate
 func (h *Handler) Generate(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -85,7 +81,7 @@ func (h *Handler) Generate(c *gin.Context) {
 
 	var req GenerateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error())
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
 		return
 	}
 
@@ -97,9 +93,8 @@ func (h *Handler) Generate(c *gin.Context) {
 	response.Success(c, http.StatusOK, d)
 }
 
-// RegenerateDialogue handles POST /api/v1/dialogue/regenerate
 func (h *Handler) RegenerateDialogue(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -107,7 +102,7 @@ func (h *Handler) RegenerateDialogue(c *gin.Context) {
 
 	var req RegenerateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error())
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
 		return
 	}
 
@@ -119,9 +114,8 @@ func (h *Handler) RegenerateDialogue(c *gin.Context) {
 	response.Success(c, http.StatusOK, d)
 }
 
-// UpdateProgress handles PUT /api/v1/dialogue/:id/progress
 func (h *Handler) UpdateProgress(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -135,7 +129,7 @@ func (h *Handler) UpdateProgress(c *gin.Context) {
 
 	var req UpdateProgressRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error())
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
 		return
 	}
 
@@ -146,9 +140,8 @@ func (h *Handler) UpdateProgress(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"ok": true})
 }
 
-// GetDialogue handles GET /api/v1/dialogue/:id
 func (h *Handler) GetDialogue(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -168,9 +161,8 @@ func (h *Handler) GetDialogue(c *gin.Context) {
 	response.Success(c, http.StatusOK, d)
 }
 
-// ListDialogues handles GET /api/v1/dialogue
 func (h *Handler) ListDialogues(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -184,15 +176,78 @@ func (h *Handler) ListDialogues(c *gin.Context) {
 	response.Success(c, http.StatusOK, dialogues)
 }
 
-// currentUserID extracts the authenticated user's ID (uint) set by JWTMiddleware.
-func currentUserID(c *gin.Context) (uint, error) {
-	raw, exists := c.Get("userID")
-	if !exists {
-		return 0, http.ErrNoCookie
+func (h *Handler) ListTopics(c *gin.Context) {
+	types, err := h.svc.ListTopics(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
 	}
-	id, ok := raw.(uint)
-	if !ok {
-		return 0, http.ErrNoCookie
+	response.Success(c, http.StatusOK, types)
+}
+
+func (h *Handler) AdminList(c *gin.Context) {
+	h.ListTopics(c)
+}
+
+func (h *Handler) AdminCreate(c *gin.Context) {
+	var req CreateTopicRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
+		return
 	}
-	return id, nil
+	dt, err := h.svc.CreateTopic(c.Request.Context(), &req)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, dt)
+}
+
+func (h *Handler) AdminUpdate(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req UpdateTopicRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
+		return
+	}
+	dt, err := h.svc.UpdateTopic(c.Request.Context(), uint(id), &req)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, dt)
+}
+
+func (h *Handler) AdminDelete(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.svc.DeleteTopic(c.Request.Context(), uint(id)); err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{"deleted": id})
+}
+
+func (h *Handler) RegisterRoutes(authed *gin.RouterGroup, admin *gin.RouterGroup) {
+	authed.GET("/dialogue/topics", h.GetTopics)
+	authed.GET("/dialogue/types", h.ListTopics)
+	authed.GET("/dialogue/active", h.GetActiveDialogue)
+	authed.GET("/dialogue/shared", h.GetSharedDialogue)
+	authed.POST("/dialogue/generate", h.Generate)
+	authed.POST("/dialogue/regenerate", h.RegenerateDialogue)
+	authed.PUT("/dialogue/:id/progress", h.UpdateProgress)
+	authed.GET("/dialogue/:id", h.GetDialogue)
+	authed.GET("/dialogue", h.ListDialogues)
+
+	admin.GET("/dialogue-types", h.AdminList)
+	admin.POST("/dialogue-types", h.AdminCreate)
+	admin.PUT("/dialogue-types/:id", h.AdminUpdate)
+	admin.DELETE("/dialogue-types/:id", h.AdminDelete)
 }

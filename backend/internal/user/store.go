@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"gorm.io/gorm"
@@ -13,6 +14,9 @@ type Store interface {
 	GetByUsername(ctx context.Context, username string) (*User, error)
 	List(ctx context.Context, offset, limit int) ([]*User, error)
 	Delete(ctx context.Context, id uint) error
+
+	GetProfileByUserID(ctx context.Context, userID uint) (*UserProfile, error)
+	UpsertProfile(ctx context.Context, profile *UserProfile) error
 }
 
 type gormStore struct {
@@ -61,3 +65,35 @@ func (s *gormStore) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
+func (s *gormStore) GetProfileByUserID(ctx context.Context, userID uint) (*UserProfile, error) {
+	var p UserProfile
+	err := s.db.WithContext(ctx).Where("user_id = ?", userID).First(&p).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get user profile: %w", err)
+	}
+	return &p, nil
+}
+
+func (s *gormStore) UpsertProfile(ctx context.Context, profile *UserProfile) error {
+	result := s.db.WithContext(ctx).
+		Where(UserProfile{UserID: profile.UserID}).
+		Assign(UserProfile{
+			Nickname:        profile.Nickname,
+			NativeLanguage:  profile.NativeLanguage,
+			TargetLanguages: profile.TargetLanguages,
+			FillBlankLevel:  profile.FillBlankLevel,
+		}).
+		FirstOrCreate(profile)
+	if result.Error != nil {
+		return fmt.Errorf("upsert user profile: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		if err := s.db.WithContext(ctx).Save(profile).Error; err != nil {
+			return fmt.Errorf("save user profile: %w", err)
+		}
+	}
+	return nil
+}

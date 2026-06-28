@@ -4,15 +4,14 @@ const BASE = '/api/v1'
 
 // ─── Generic helper ────────────────────────────────────────────────────────
 
-async function apiCall<T>(token: string, path: string, options?: RequestInit): Promise<T> {
-  console.log("[apiCall]", path, "token:", token ? token.substring(0, 10) + "..." : "null")
+async function apiCall<T>(_token: string | null | undefined, path: string, options?: RequestInit): Promise<T> {
   let res: Response
   try {
     res = await fetch(`${BASE}${path}`, {
       ...options,
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
         ...(options?.headers ?? {}),
       },
     })
@@ -21,7 +20,6 @@ async function apiCall<T>(token: string, path: string, options?: RequestInit): P
   }
   const json = await res.json()
   if (json.code !== 0) {
-    // Avoid leaking internal server error details to the UI
     if (res.status >= 500) throw new Error('服务器出错，请稍后重试')
     throw new Error(json.msg ?? 'API error')
   }

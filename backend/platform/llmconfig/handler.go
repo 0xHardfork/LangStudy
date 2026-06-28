@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/0xHardfork/langstudy/platform/response"
+	"github.com/0xHardfork/langstudy/platform/validator"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,7 +28,7 @@ func (h *Handler) GetConfig(c *gin.Context) {
 func (h *Handler) UpdateConfig(c *gin.Context) {
 	var req UpdateConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error())
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
 		return
 	}
 
@@ -38,4 +39,9 @@ func (h *Handler) UpdateConfig(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, cfg)
+}
+
+func (h *Handler) RegisterRoutes(admin *gin.RouterGroup) {
+	admin.GET("/llm-config", h.GetConfig)
+	admin.PUT("/llm-config", h.UpdateConfig)
 }

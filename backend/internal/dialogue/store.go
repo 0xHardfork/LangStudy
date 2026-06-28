@@ -30,6 +30,12 @@ type Store interface {
 	GetActiveDialogue(ctx context.Context, userID uint) (*ActiveDialogueResult, error)
 	UpsertProgress(ctx context.Context, userID, dialogueID uint, lineIndex int, completed bool) error
 	GetProgress(ctx context.Context, userID, dialogueID uint) (*UserDialogueProgress, error)
+
+	ListTypes(ctx context.Context) ([]Type, error)
+	GetTypeByName(ctx context.Context, name string) (*Type, error)
+	CreateType(ctx context.Context, dt *Type) error
+	UpdateType(ctx context.Context, dt *Type) error
+	DeleteType(ctx context.Context, id uint) error
 }
 
 type gormStore struct {
@@ -41,9 +47,8 @@ func NewStore(db *gorm.DB) Store {
 	return &gormStore{db: db}
 }
 
-// CreateDialogue inserts a new Dialogue record (ID will be set after insert).
 func (s *gormStore) CreateDialogue(ctx context.Context, d *Dialogue) error {
-	if err := s.db.WithContext(ctx).Omit("Lines").Create(d).Error; err != nil {
+	if err := s.db.WithContext(ctx).Create(d).Error; err != nil {
 		return fmt.Errorf("create dialogue: %w", err)
 	}
 	return nil
@@ -234,4 +239,41 @@ func (s *gormStore) GetProgress(ctx context.Context, userID, dialogueID uint) (*
 		return nil, fmt.Errorf("get progress: %w", err)
 	}
 	return &p, nil
+}
+
+func (s *gormStore) ListTypes(ctx context.Context) ([]Type, error) {
+	var types []Type
+	if err := s.db.WithContext(ctx).Order("sort_order ASC, id ASC").Find(&types).Error; err != nil {
+		return nil, fmt.Errorf("list dialogue types: %w", err)
+	}
+	return types, nil
+}
+
+func (s *gormStore) GetTypeByName(ctx context.Context, name string) (*Type, error) {
+	var dt Type
+	if err := s.db.WithContext(ctx).Where("name = ?", name).First(&dt).Error; err != nil {
+		return nil, fmt.Errorf("get dialogue type by name: %w", err)
+	}
+	return &dt, nil
+}
+
+func (s *gormStore) CreateType(ctx context.Context, dt *Type) error {
+	if err := s.db.WithContext(ctx).Create(dt).Error; err != nil {
+		return fmt.Errorf("create dialogue type: %w", err)
+	}
+	return nil
+}
+
+func (s *gormStore) UpdateType(ctx context.Context, dt *Type) error {
+	if err := s.db.WithContext(ctx).Save(dt).Error; err != nil {
+		return fmt.Errorf("update dialogue type: %w", err)
+	}
+	return nil
+}
+
+func (s *gormStore) DeleteType(ctx context.Context, id uint) error {
+	if err := s.db.WithContext(ctx).Delete(&Type{}, id).Error; err != nil {
+		return fmt.Errorf("delete dialogue type: %w", err)
+	}
+	return nil
 }

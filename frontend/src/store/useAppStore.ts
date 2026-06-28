@@ -50,7 +50,7 @@ interface AppState {
 }
 
 const initialState = {
-  token: localStorage.getItem('token'),
+  token: null,
   user: null,
   learningProfile: null,
   dialogueTypes: [],
@@ -67,16 +67,14 @@ const initialState = {
 export const useAppStore = create<AppState>((set) => ({
   ...initialState,
 
-  setToken: (token) => {
-    if (token) {
-      localStorage.setItem('token', token)
-    } else {
-      localStorage.removeItem('token')
-    }
-    set({ token })
+  setToken: (_token) => {
+    set({ token: null })
   },
   setUser: (user) => set({ user }),
-  setLearningProfile: (learningProfile) => set({ learningProfile }),
+  setLearningProfile: (learningProfile) => {
+    const fillBlankLevel = learningProfile?.fill_blank_level ?? 1
+    set({ learningProfile, fillBlankLevel })
+  },
   setDialogueTypes: (dialogueTypes) => set({ dialogueTypes }),
   setView: (view) => set({ currentView: view }),
   setSelectedTopic: (topic) => set({ selectedTopic: topic }),
@@ -87,7 +85,6 @@ export const useAppStore = create<AppState>((set) => ({
   setGeneratingError: (msg) => set({ generatingError: msg }),
   setExerciseResult: (r) => set({ exerciseResult: r }),
   reset: () => {
-    localStorage.removeItem('token')
-    set({ ...initialState, token: null })
+    set({ ...initialState, token: null, user: null })
   },
 }))

@@ -3,23 +3,22 @@ package ebbinghaus
 import (
 	"net/http"
 
+	"github.com/0xHardfork/langstudy/platform/auth"
 	"github.com/0xHardfork/langstudy/platform/response"
+	"github.com/0xHardfork/langstudy/platform/validator"
 	"github.com/gin-gonic/gin"
 )
 
-// Handler handles HTTP requests for spaced repetition reviews.
 type Handler struct {
 	svc Service
 }
 
-// NewHandler creates a new Handler.
 func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// GetDueReviews handles GET /api/v1/reviews/due
 func (h *Handler) GetDueReviews(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -33,9 +32,8 @@ func (h *Handler) GetDueReviews(c *gin.Context) {
 	response.Success(c, http.StatusOK, reviews)
 }
 
-// GetReviewSchedule handles GET /api/v1/reviews/schedule
 func (h *Handler) GetReviewSchedule(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -49,10 +47,8 @@ func (h *Handler) GetReviewSchedule(c *gin.Context) {
 	response.Success(c, http.StatusOK, reviews)
 }
 
-
-// SubmitAnswer handles POST /api/v1/reviews/answer
 func (h *Handler) SubmitAnswer(c *gin.Context) {
-	userID, err := currentUserID(c)
+	userID, err := auth.CurrentUserID(c)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, "unauthorized")
 		return
@@ -60,7 +56,7 @@ func (h *Handler) SubmitAnswer(c *gin.Context) {
 
 	var req SubmitAnswerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error())
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
 		return
 	}
 
@@ -71,15 +67,8 @@ func (h *Handler) SubmitAnswer(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"recorded": true})
 }
 
-// currentUserID extracts the authenticated user's ID (uint) set by JWTMiddleware.
-func currentUserID(c *gin.Context) (uint, error) {
-	raw, exists := c.Get("userID")
-	if !exists {
-		return 0, http.ErrNoCookie
-	}
-	id, ok := raw.(uint)
-	if !ok {
-		return 0, http.ErrNoCookie
-	}
-	return id, nil
+func (h *Handler) RegisterRoutes(authed *gin.RouterGroup) {
+	authed.GET("/reviews/due", h.GetDueReviews)
+	authed.GET("/reviews/schedule", h.GetReviewSchedule)
+	authed.POST("/reviews/answer", h.SubmitAnswer)
 }

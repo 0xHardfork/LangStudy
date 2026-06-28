@@ -49,25 +49,31 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
+var v = viper.New()
+
+func Viper() *viper.Viper {
+	return v
+}
+
 func Load() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath("configs")
-	viper.AddConfigPath(".")
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+	v.AddConfigPath("configs")
+	v.AddConfigPath(".")
 
-	viper.SetDefault("app.port", 8080)
-	viper.SetDefault("app.env", "development")
-	viper.SetDefault("postgres.host", "localhost")
-	viper.SetDefault("postgres.port", 5432)
-	viper.SetDefault("postgres.sslmode", "disable")
-	viper.SetDefault("redis.host", "localhost")
-	viper.SetDefault("redis.port", 6379)
-	viper.SetDefault("jwt.expire_hours", 24)
+	v.SetDefault("app.port", 8080)
+	v.SetDefault("app.env", "development")
+	v.SetDefault("postgres.host", "localhost")
+	v.SetDefault("postgres.port", 5432)
+	v.SetDefault("postgres.sslmode", "disable")
+	v.SetDefault("redis.host", "localhost")
+	v.SetDefault("redis.port", 6379)
+	v.SetDefault("jwt.expire_hours", 24)
 
-	viper.AutomaticEnv()
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	if err := viper.ReadInConfig(); err != nil {
+	if err := v.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFound) {
 			return nil, fmt.Errorf("read config: %w", err)
@@ -83,7 +89,7 @@ func Reload() (*Config, error) {
 
 func unmarshal() (*Config, error) {
 	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
+	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 	return &cfg, nil

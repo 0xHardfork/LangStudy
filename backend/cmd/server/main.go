@@ -4,27 +4,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
-	"github.com/0xHardfork/langstudy/internal/auth"
 	"github.com/0xHardfork/langstudy/internal/dialogue"
-	"github.com/0xHardfork/langstudy/internal/dialoguetype"
 	"github.com/0xHardfork/langstudy/internal/ebbinghaus"
 	"github.com/0xHardfork/langstudy/internal/grammar"
-	"github.com/0xHardfork/langstudy/internal/llmconfig"
 	"github.com/0xHardfork/langstudy/internal/user"
-	"github.com/0xHardfork/langstudy/internal/userprofile"
 	"github.com/0xHardfork/langstudy/migrations"
+	"github.com/0xHardfork/langstudy/platform/auth"
 	"github.com/0xHardfork/langstudy/platform/cache"
 	"github.com/0xHardfork/langstudy/platform/config"
 	"github.com/0xHardfork/langstudy/platform/database"
 	"github.com/0xHardfork/langstudy/platform/devenv"
 	"github.com/0xHardfork/langstudy/platform/logger"
+	"github.com/0xHardfork/langstudy/platform/llm"
+	"github.com/0xHardfork/langstudy/platform/llmconfig"
 	"github.com/0xHardfork/langstudy/platform/response"
+	"github.com/0xHardfork/langstudy/platform/validator"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -51,6 +54,10 @@ func main() {
 
 	log.Info("config loaded", zap.String("env", cfg.App.Env))
 
+	if err := validator.Init(); err != nil {
+		log.Fatal("init validator translator failed", zap.Error(err))
+	}
+
 	// 3. DevEnv — overrides Viper config (dev mode only)
 	ctx := context.Background()
 
@@ -66,7 +73,7 @@ func main() {
 	}
 
 	// 4. Database
-	db, err := database.NewPostgres(cfg.Postgres)
+	db, err := database.NewPostgres(cfg.Postgres, log)
 	if err != nil {
 		log.Fatal("postgres connect", zap.Error(err))
 	}
@@ -97,23 +104,17 @@ func main() {
 
 	// 7-9. User module wiring
 	userStore := user.NewStore(db)
-	userService := user.NewService(userStore, cfg)
-	userHandler := user.NewHandler(userService)
+	userService := user.NewService(userStore, cfg, redisClient)
+	userHandler := user.NewHandler(userService, cfg)
 
 	llmStore := llmconfig.NewStore(db)
 	llmService := llmconfig.NewService(llmStore)
 	llmHandler := llmconfig.NewHandler(llmService)
 
-	profileStore := userprofile.NewStore(db)
-	profileService := userprofile.NewService(profileStore)
-	profileHandler := userprofile.NewHandler(profileService)
+	llmCli := llm.NewClient(log)
 
 	dialogueStore := dialogue.NewStore(db)
-	typeStore := dialoguetype.NewStore(db)
-	typeService := dialoguetype.NewService(typeStore)
-	typeHandler := dialoguetype.NewHandler(typeService)
-
-	dialogueService := dialogue.NewService(dialogueStore, llmStore, typeStore, log, "static")
+	dialogueService := dialogue.NewService(dialogueStore, llmStore, log, "static", llmCli)
 	dialogueHandler := dialogue.NewHandler(dialogueService)
 
 	ebbStore := ebbinghaus.NewStore(db)
@@ -121,7 +122,7 @@ func main() {
 	ebbHandler := ebbinghaus.NewHandler(ebbService)
 
 	grammarStore := grammar.NewStore(db)
-	grammarService := grammar.NewService(grammarStore, llmService, log)
+	grammarService := grammar.NewService(grammarStore, llmService, log, llmCli)
 	grammarHandler := grammar.NewHandler(grammarService)
 
 	// 10. Router
@@ -132,7 +133,7 @@ func main() {
 	gin.SetMode(ginMode)
 
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(zapRecoveryMiddleware(log))
 	r.Use(zapLoggerMiddleware(log))
 
 	// Serve generated audio files
@@ -144,64 +145,27 @@ func main() {
 
 	api := r.Group("/api/v1")
 	{
-		api.POST("/register", userHandler.Register)
-		api.POST("/login", userHandler.Login)
-
 		authed := api.Group("")
 		authed.Use(auth.JWTMiddleware(cfg))
-		{
-			authed.GET("/profile", userHandler.GetProfile)
-			authed.GET("/me/profile", profileHandler.GetProfile)
-			authed.PUT("/me/profile", profileHandler.UpsertProfile)
-
-			authed.GET("/dialogue/topics", dialogueHandler.GetTopics)
-			authed.GET("/dialogue/types", typeHandler.List)
-			authed.GET("/dialogue/active", dialogueHandler.GetActiveDialogue)
-			authed.GET("/dialogue/shared", dialogueHandler.GetSharedDialogue)
-			authed.POST("/dialogue/generate", dialogueHandler.Generate)
-			authed.POST("/dialogue/regenerate", dialogueHandler.RegenerateDialogue)
-			authed.PUT("/dialogue/:id/progress", dialogueHandler.UpdateProgress)
-			authed.GET("/dialogue/:id", dialogueHandler.GetDialogue)
-			authed.GET("/dialogue", dialogueHandler.ListDialogues)
-
-			authed.GET("/reviews/due", ebbHandler.GetDueReviews)
-			authed.GET("/reviews/schedule", ebbHandler.GetReviewSchedule)
-			authed.POST("/reviews/answer", ebbHandler.SubmitAnswer)
-
-			// Grammar study routes
-			authed.POST("/grammar/analyze", grammarHandler.Analyze)
-			authed.GET("/grammar/history", grammarHandler.GetHistory)
-			authed.GET("/grammar/article/:id", grammarHandler.GetArticle)
-			authed.POST("/grammar/quiz/answer", grammarHandler.SubmitAnswer)
-			authed.GET("/grammar/reviews/due", grammarHandler.GetDueReviews)
-			authed.POST("/grammar/sentence/:id/regenerate", grammarHandler.RegenerateSentence)
-		}
 
 		adminGroup := api.Group("/admin")
 		adminGroup.Use(auth.JWTMiddleware(cfg))
-		adminGroup.Use(auth.AdminRequired(userStore))
-		{
-			adminGroup.GET("/users", userHandler.ListUsers)
-			adminGroup.POST("/users", userHandler.CreateUser)
-			adminGroup.DELETE("/users/:id", userHandler.DeleteUser)
+		adminGroup.Use(auth.AdminRequired())
 
-			adminGroup.GET("/llm-config", llmHandler.GetConfig)
-			adminGroup.PUT("/llm-config", llmHandler.UpdateConfig)
-
-			adminGroup.GET("/dialogue-types", typeHandler.AdminList)
-			adminGroup.POST("/dialogue-types", typeHandler.AdminCreate)
-			adminGroup.PUT("/dialogue-types/:id", typeHandler.AdminUpdate)
-			adminGroup.DELETE("/dialogue-types/:id", typeHandler.AdminDelete)
-		}
+		userHandler.RegisterRoutes(api, authed, adminGroup)
+		dialogueHandler.RegisterRoutes(authed, adminGroup)
+		ebbHandler.RegisterRoutes(authed)
+		grammarHandler.RegisterRoutes(authed)
+		llmHandler.RegisterRoutes(adminGroup)
 	}
 
 	// 11. HTTP Server
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.App.Port),
 		Handler:      r,
-		ReadTimeout:  120 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	go func() {
@@ -244,11 +208,62 @@ func zapLoggerMiddleware(log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
-		log.Info("request",
+		status := c.Writer.Status()
+		fields := []zap.Field{
 			zap.String("method", c.Request.Method),
 			zap.String("path", c.Request.URL.Path),
-			zap.Int("status", c.Writer.Status()),
+			zap.Int("status", status),
 			zap.Duration("latency", time.Since(start)),
-		)
+		}
+		if status >= 500 {
+			log.Error("request failed", fields...)
+		} else if status >= 400 {
+			log.Warn("request warning", fields...)
+		} else {
+			log.Info("request", fields...)
+		}
+	}
+}
+
+func zapRecoveryMiddleware(log *zap.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			if err := recover(); err != nil {
+				var brokenPipe bool
+				if ne, ok := err.(*net.OpError); ok {
+					var se *os.SyscallError
+					if errors.As(ne.Err, &se) {
+						errStr := strings.ToLower(se.Error())
+						if strings.Contains(errStr, "broken pipe") || strings.Contains(errStr, "connection reset by peer") {
+							brokenPipe = true
+						}
+					}
+				}
+
+				stack := make([]byte, 2048)
+				length := runtime.Stack(stack, false)
+				stackStr := string(stack[:length])
+
+				if brokenPipe {
+					log.Error("broken pipe or connection reset",
+						zap.Any("error", err),
+						zap.String("path", c.Request.URL.Path),
+					)
+					c.Error(err.(error))
+					c.Abort()
+					return
+				}
+
+				log.Error("panic recovered",
+					zap.Any("error", err),
+					zap.String("path", c.Request.URL.Path),
+					zap.String("query", c.Request.URL.RawQuery),
+					zap.String("stack", stackStr),
+				)
+				response.Fail(c, http.StatusInternalServerError, "internal server error")
+				c.Abort()
+			}
+		}()
+		c.Next()
 	}
 }

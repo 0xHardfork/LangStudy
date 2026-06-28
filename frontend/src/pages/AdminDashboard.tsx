@@ -59,9 +59,7 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
     setUsersLoading(true)
     try {
       const response = await fetch('/api/v1/admin/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'same-origin'
       })
       const result = await response.json()
       if (response.ok && result.code === 0) {
@@ -80,9 +78,7 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
     setConfigLoading(true)
     try {
       const response = await fetch('/api/v1/admin/llm-config', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'same-origin'
       })
       const result = await response.json()
       if (response.ok && result.code === 0) {
@@ -151,9 +147,9 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
     try {
       const response = await fetch('/api/v1/admin/users', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(values)
       })
@@ -175,9 +171,7 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
     try {
       const response = await fetch(`/api/v1/admin/users/${id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'same-origin'
       })
       const result = await response.json()
       if (response.ok && result.code === 0) {
@@ -195,9 +189,9 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
     try {
       const response = await fetch('/api/v1/admin/llm-config', {
         method: 'PUT',
+        credentials: 'same-origin',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(values)
       })

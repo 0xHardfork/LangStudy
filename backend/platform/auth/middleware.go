@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/0xHardfork/langstudy/internal/user"
 	"github.com/0xHardfork/langstudy/platform/config"
 	"github.com/0xHardfork/langstudy/platform/response"
 	"github.com/gin-gonic/gin"
@@ -13,14 +12,22 @@ import (
 
 func JWTMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			response.Fail(c, http.StatusUnauthorized, "missing or invalid authorization header")
+		var tokenStr string
+		cookie, err := c.Cookie("token")
+		if err == nil && cookie != "" {
+			tokenStr = cookie
+		} else {
+			authHeader := c.GetHeader("Authorization")
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
+			}
+		}
+
+		if tokenStr == "" {
+			response.Fail(c, http.StatusUnauthorized, "missing or invalid authorization token")
 			c.Abort()
 			return
 		}
-
-		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 
 		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -49,32 +56,24 @@ func JWTMiddleware(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		role, _ := claims["role"].(string)
+
 		c.Set("userID", uint(userIDFloat))
+		c.Set("userRole", role)
 		c.Next()
 	}
 }
 
-func AdminRequired(userStore user.Store) gin.HandlerFunc {
+func AdminRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		raw, exists := c.Get("userID")
+		raw, exists := c.Get("userRole")
 		if !exists {
 			response.Fail(c, http.StatusUnauthorized, "unauthorized")
 			c.Abort()
 			return
 		}
-		userID, ok := raw.(uint)
-		if !ok {
-			response.Fail(c, http.StatusInternalServerError, "invalid user id in context")
-			c.Abort()
-			return
-		}
-		u, err := userStore.GetByID(c.Request.Context(), userID)
-		if err != nil {
-			response.Fail(c, http.StatusForbidden, "forbidden: user not found")
-			c.Abort()
-			return
-		}
-		if u.Role != "admin" {
+		role, ok := raw.(string)
+		if !ok || role != "admin" {
 			response.Fail(c, http.StatusForbidden, "forbidden: admin privileges required")
 			c.Abort()
 			return
@@ -83,3 +82,14 @@ func AdminRequired(userStore user.Store) gin.HandlerFunc {
 	}
 }
 
+func CurrentUserID(c *gin.Context) (uint, error) {
+	raw, exists := c.Get("userID")
+	if !exists {
+		return 0, http.ErrNoCookie
+	}
+	id, ok := raw.(uint)
+	if !ok {
+		return 0, http.ErrNoCookie
+	}
+	return id, nil
+}

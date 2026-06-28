@@ -32,10 +32,9 @@
 
 ## 🔴 安全（需后端配合）
 
-- [ ] **Token 存在 `localStorage`，XSS 风险**
-  - 文件：`store/useAppStore.ts`（目前 `localStorage` 操作已集中于此）
-  - 根本修复：迁移到 `HttpOnly Cookie`，需后端修改 `/login` 接口 + 移除前端手动传 `Authorization` Header
-  - **短期缓解**：目前已封装到 store，禁止组件直接操作 localStorage（规则已写入 `.agents/rules/frontend.md`）
+- [x] **Token 存在 `localStorage`，XSS 风险**
+  - 文件：`store/useAppStore.ts`
+  - 根本修复：迁移到 `HttpOnly Cookie`，需后端修改 `/login` 接口 + 移除前端手动传 `Authorization` Header (已完成前后端联调迁移，彻底杜绝客户端 JS 访问 Token 的风险)
 
 ---
 

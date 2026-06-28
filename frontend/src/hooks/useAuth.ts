@@ -3,35 +3,32 @@ import { useAppStore } from '../store/useAppStore'
 import { getProfile } from '../services/api'
 
 export function useAuth() {
-  const { token, setToken, setUser, reset } = useAppStore()
-  const [loading, setLoading] = useState(false)
+  const { setUser, reset } = useAppStore()
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!token) {
-      setUser(null)
-      return
-    }
-
     const fetchUser = async () => {
-      setLoading(true)
       setError(null)
       try {
-        const userProfile = await getProfile(token)
+        const userProfile = await getProfile('')
         setUser(userProfile)
       } catch (err: any) {
-        // Clear session on failed auth
         reset()
-        setError(err.message ?? '身份验证失败')
       } finally {
         setLoading(false)
       }
     }
 
     fetchUser()
-  }, [token, setToken, setUser, reset])
+  }, [setUser, reset])
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetch('/api/v1/logout', { method: 'POST' })
+    } catch (err) {
+      console.warn('logout failed', err)
+    }
     reset()
   }
 
