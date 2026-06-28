@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Dialogue, TargetLanguage } from '../types'
+import type { Dialogue, TargetLanguage, AuthUser, UserLearningProfile, DialogueType } from '../types'
 
 export type AppView =
   | 'home'
@@ -13,15 +13,31 @@ export type AppView =
   | 'grammar'
 
 interface AppState {
+  // Auth & User Session
+  token: string | null
+  user: AuthUser | null
+  learningProfile: UserLearningProfile | null
+  dialogueTypes: DialogueType[]
+
+  // Navigation (Deprecated in favor of react-router-dom, but kept for partial compatibility if needed)
   currentView: AppView
+
+  // Dialogue selection
   selectedTopic: string
   selectedLanguage: TargetLanguage | null
   currentDialogue: Dialogue | null
   previewLineIndex: number
+
+  // Exercise
   fillBlankLevel: number
   generatingError: string | null
   exerciseResult: { wrongCount: number } | null
 
+  // Actions
+  setToken: (token: string | null) => void
+  setUser: (user: AuthUser | null) => void
+  setLearningProfile: (profile: UserLearningProfile | null) => void
+  setDialogueTypes: (types: DialogueType[]) => void
   setView: (view: AppView) => void
   setSelectedTopic: (topic: string) => void
   setSelectedLanguage: (lang: TargetLanguage | null) => void
@@ -33,8 +49,12 @@ interface AppState {
   reset: () => void
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  currentView: 'home',
+const initialState = {
+  token: localStorage.getItem('token'),
+  user: null,
+  learningProfile: null,
+  dialogueTypes: [],
+  currentView: 'home' as AppView,
   selectedTopic: '',
   selectedLanguage: null,
   currentDialogue: null,
@@ -42,7 +62,22 @@ export const useAppStore = create<AppState>((set) => ({
   fillBlankLevel: 1,
   generatingError: null,
   exerciseResult: null,
+}
 
+export const useAppStore = create<AppState>((set) => ({
+  ...initialState,
+
+  setToken: (token) => {
+    if (token) {
+      localStorage.setItem('token', token)
+    } else {
+      localStorage.removeItem('token')
+    }
+    set({ token })
+  },
+  setUser: (user) => set({ user }),
+  setLearningProfile: (learningProfile) => set({ learningProfile }),
+  setDialogueTypes: (dialogueTypes) => set({ dialogueTypes }),
   setView: (view) => set({ currentView: view }),
   setSelectedTopic: (topic) => set({ selectedTopic: topic }),
   setSelectedLanguage: (lang) => set({ selectedLanguage: lang }),
@@ -51,13 +86,8 @@ export const useAppStore = create<AppState>((set) => ({
   setFillBlankLevel: (level) => set({ fillBlankLevel: level }),
   setGeneratingError: (msg) => set({ generatingError: msg }),
   setExerciseResult: (r) => set({ exerciseResult: r }),
-  reset: () =>
-    set({
-      currentView: 'home',
-      selectedTopic: '',
-      selectedLanguage: null,
-      currentDialogue: null,
-      previewLineIndex: 0,
-      generatingError: null,
-    }),
+  reset: () => {
+    localStorage.removeItem('token')
+    set({ ...initialState, token: null })
+  },
 }))

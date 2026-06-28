@@ -1,21 +1,37 @@
-import type { Dialogue, DialogueType, DialogueWithProgress, ReviewItem, UserLearningProfile, GrammarArticle, GrammarQuizReviewDetail, GrammarSentence } from '../types'
+import type { Dialogue, DialogueType, DialogueWithProgress, ReviewItem, UserLearningProfile, GrammarArticle, GrammarQuizReviewDetail, GrammarSentence, AuthUser } from '../types'
 
 const BASE = '/api/v1'
 
 // ─── Generic helper ────────────────────────────────────────────────────────
 
 async function apiCall<T>(token: string, path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(options?.headers ?? {}),
-    },
-  })
+  console.log("[apiCall]", path, "token:", token ? token.substring(0, 10) + "..." : "null")
+  let res: Response
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(options?.headers ?? {}),
+      },
+    })
+  } catch {
+    throw new Error('网络请求失败，请检查网络连接')
+  }
   const json = await res.json()
-  if (json.code !== 0) throw new Error(json.msg ?? 'API error')
+  if (json.code !== 0) {
+    // Avoid leaking internal server error details to the UI
+    if (res.status >= 500) throw new Error('服务器出错，请稍后重试')
+    throw new Error(json.msg ?? 'API error')
+  }
   return json.data as T
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────
+
+export function getProfile(token: string): Promise<AuthUser> {
+  return apiCall<AuthUser>(token, '/profile')
 }
 
 // ─── User Profile ──────────────────────────────────────────────────────────
@@ -86,7 +102,8 @@ export function getSharedDialogue(
   language: string,
   level: string,
 ): Promise<DialogueWithProgress> {
-  return apiCall<DialogueWithProgress>(token, `/dialogue/shared?topic=${encodeURIComponent(topic)}&language=${language}&level=${level}`)
+  const params = new URLSearchParams({ topic, language, level })
+  return apiCall<DialogueWithProgress>(token, `/dialogue/shared?${params.toString()}`)
 }
 
 export function getActiveDialogue(token: string): Promise<DialogueWithProgress> {

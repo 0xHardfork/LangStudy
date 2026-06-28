@@ -6,6 +6,7 @@ import {
   adminUpdateDialogueType,
   adminDeleteDialogueType,
 } from '../services/api'
+import { useAppStore } from '../store/useAppStore'
 
 interface UserProfile {
   id: number
@@ -15,7 +16,6 @@ interface UserProfile {
 }
 
 interface AdminDashboardProps {
-  token: string
   onLogout: () => void
   user: UserProfile
 }
@@ -37,7 +37,8 @@ interface DialogueTypeData {
   updated_at: string
 }
 
-export default function AdminDashboard({ token, onLogout, user }: AdminDashboardProps) {
+export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) {
+  const token = useAppStore(state => state.token!)
   const [activeTab, setActiveTab] = useState('users')
   const [users, setUsers] = useState<UserData[]>([])
   const [usersLoading, setUsersLoading] = useState(false)

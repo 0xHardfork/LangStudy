@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import { upsertLearningProfile } from '../services/api'
 import type { UserLearningProfile } from '../types'
 import { LANGUAGE_LABELS, LEVEL_LABELS } from '../types'
+import { useAppStore } from '../store/useAppStore'
 
 interface Props {
-  token: string
   initialProfile: UserLearningProfile | null
   onSave: (updatedProfile: UserLearningProfile) => void
   onClose: () => void
@@ -20,7 +20,8 @@ const NATIVE_LANGUAGES = [
   { value: 'es', label: 'Español' },
 ]
 
-export default function UserProfileModal({ token, initialProfile, onSave, onClose }: Props) {
+export default function UserProfileModal({ initialProfile, onSave, onClose }: Props) {
+  const token = useAppStore(state => state.token!)
   const [nickname, setNickname] = useState('')
   const [nativeLang, setNativeLang] = useState('zh')
   const [targetLang, setTargetLang] = useState('en')
@@ -33,9 +34,10 @@ export default function UserProfileModal({ token, initialProfile, onSave, onClos
     if (initialProfile) {
       setNickname(initialProfile.nickname || '')
       setNativeLang(initialProfile.native_language || 'zh')
-      if (initialProfile.target_languages && initialProfile.target_languages.length > 0) {
-        setTargetLang(initialProfile.target_languages[0].lang)
-        setTargetLevel(initialProfile.target_languages[0].level)
+      const targets = initialProfile.target_languages
+      if (targets && targets.length > 0 && targets[0]) {
+        setTargetLang(targets[0].lang)
+        setTargetLevel(targets[0].level)
       }
       if (initialProfile.fill_blank_level) {
         setFillBlankLevel(initialProfile.fill_blank_level)
@@ -72,44 +74,26 @@ export default function UserProfileModal({ token, initialProfile, onSave, onClos
 
   return (
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 100,
-        background: 'rgba(0,0,0,0.75)',
-        backdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1rem',
-      }}
+      className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-md flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'rgba(15,23,42,0.95)',
-          border: '1px solid rgba(100,116,139,0.3)',
-          borderRadius: '1.25rem',
-          padding: '2rem',
-          width: '100%',
-          maxWidth: '480px',
-          boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
-        }}
+        className="bg-slate-900/95 border border-slate-850 rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl"
       >
-        <h2 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '1.25rem', marginBottom: '1.5rem' }}>
+        <h2 className="text-slate-100 font-bold text-xl mb-4">
           个人设定
         </h2>
 
         {error && (
-          <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5', fontSize: '0.8125rem' }}>
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-305 text-xs">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <div className="flex flex-col gap-1.5">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
               昵称
             </label>
             <input
@@ -119,151 +103,85 @@ export default function UserProfileModal({ token, initialProfile, onSave, onClos
               placeholder="请输入您的昵称"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              style={{
-                width: '100%',
-                borderRadius: '0.5rem',
-                border: '1px solid rgba(100,116,139,0.3)',
-                background: 'rgba(2,6,17,0.5)',
-                padding: '0.625rem 0.875rem',
-                color: 'white',
-                fontSize: '0.875rem',
-                boxSizing: 'border-box',
-              }}
+              className="w-full rounded-lg border border-slate-800 bg-slate-950/50 p-2.5 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors"
             />
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+          <div className="flex flex-col gap-1.5">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
               母语
             </label>
             <select
               value={nativeLang}
               onChange={(e) => setNativeLang(e.target.value)}
-              style={{
-                width: '100%',
-                borderRadius: '0.5rem',
-                border: '1px solid rgba(100,116,139,0.3)',
-                background: 'rgba(2,6,17,0.5)',
-                padding: '0.625rem 0.875rem',
-                color: 'white',
-                fontSize: '0.875rem',
-                boxSizing: 'border-box',
-              }}
+              className="w-full rounded-lg border border-slate-800 bg-slate-950/50 p-2.5 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors"
             >
               {NATIVE_LANGUAGES.map((lang) => (
-                <option key={lang.value} value={lang.value} style={{ background: '#0f172a' }}>
+                <option key={lang.value} value={lang.value} className="bg-slate-950">
                   {lang.label}
                 </option>
               ))}
             </select>
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+          <div className="flex flex-col gap-1.5">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
               学习语言
             </label>
             <select
               value={targetLang}
               onChange={(e) => setTargetLang(e.target.value)}
-              style={{
-                width: '100%',
-                borderRadius: '0.5rem',
-                border: '1px solid rgba(100,116,139,0.3)',
-                background: 'rgba(2,6,17,0.5)',
-                padding: '0.625rem 0.875rem',
-                color: 'white',
-                fontSize: '0.875rem',
-                boxSizing: 'border-box',
-              }}
+              className="w-full rounded-lg border border-slate-800 bg-slate-950/50 p-2.5 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors"
             >
-              <option value="ja" style={{ background: '#0f172a' }}>{LANGUAGE_LABELS.ja}</option>
-              <option value="en" style={{ background: '#0f172a' }}>{LANGUAGE_LABELS.en}</option>
+              <option value="ja" className="bg-slate-950">{LANGUAGE_LABELS.ja}</option>
+              <option value="en" className="bg-slate-950">{LANGUAGE_LABELS.en}</option>
             </select>
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+          <div className="flex flex-col gap-1.5">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
               学习等级
             </label>
             <select
               value={targetLevel}
               onChange={(e) => setTargetLevel(e.target.value)}
-              style={{
-                width: '100%',
-                borderRadius: '0.5rem',
-                border: '1px solid rgba(100,116,139,0.3)',
-                background: 'rgba(2,6,17,0.5)',
-                padding: '0.625rem 0.875rem',
-                color: 'white',
-                fontSize: '0.875rem',
-                boxSizing: 'border-box',
-              }}
+              className="w-full rounded-lg border border-slate-800 bg-slate-950/50 p-2.5 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors"
             >
-              <option value="beginner" style={{ background: '#0f172a' }}>{LEVEL_LABELS.beginner}</option>
-              <option value="intermediate" style={{ background: '#0f172a' }}>{LEVEL_LABELS.intermediate}</option>
-              <option value="advanced" style={{ background: '#0f172a' }}>{LEVEL_LABELS.advanced}</option>
+              <option value="beginner" className="bg-slate-950">{LEVEL_LABELS.beginner}</option>
+              <option value="intermediate" className="bg-slate-950">{LEVEL_LABELS.intermediate}</option>
+              <option value="advanced" className="bg-slate-950">{LEVEL_LABELS.advanced}</option>
             </select>
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+          <div className="flex flex-col gap-1.5">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
               默认填空等级
             </label>
             <select
               value={fillBlankLevel}
               onChange={(e) => setFillBlankLevel(Number(e.target.value))}
-              style={{
-                width: '100%',
-                borderRadius: '0.5rem',
-                border: '1px solid rgba(100,116,139,0.3)',
-                background: 'rgba(2,6,17,0.5)',
-                padding: '0.625rem 0.875rem',
-                color: 'white',
-                fontSize: '0.875rem',
-                boxSizing: 'border-box',
-              }}
+              className="w-full rounded-lg border border-slate-800 bg-slate-950/50 p-2.5 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors"
             >
-              <option value={1} style={{ background: '#0f172a' }}>L1 (容易 - 挖空少)</option>
-              <option value={2} style={{ background: '#0f172a' }}>L2 (中等)</option>
-              <option value={3} style={{ background: '#0f172a' }}>L3 (较难)</option>
-              <option value={4} style={{ background: '#0f172a' }}>L4 (极难 - 全文挖空)</option>
+              <option value={1} className="bg-slate-950">L1 (容易 - 挖空少)</option>
+              <option value={2} className="bg-slate-950">L2 (中等)</option>
+              <option value={3} className="bg-slate-950">L3 (较难)</option>
+              <option value={4} className="bg-slate-950">L4 (极难 - 全文挖空)</option>
             </select>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+          <div className="flex gap-3 mt-4">
             <button
               type="button"
               onClick={onClose}
               disabled={saving}
-              style={{
-                flex: 1,
-                padding: '0.625rem',
-                borderRadius: '0.5rem',
-                border: '1px solid rgba(100,116,139,0.2)',
-                background: 'transparent',
-                color: '#64748b',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
+              className="flex-1 py-2.5 rounded-lg border border-slate-800 bg-transparent text-slate-500 text-sm font-semibold cursor-pointer hover:bg-slate-800/40 hover:text-slate-350 transition-colors"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={saving}
-              style={{
-                flex: 1,
-                padding: '0.625rem',
-                borderRadius: '0.5rem',
-                border: 'none',
-                background: 'linear-gradient(135deg,#3b82f6,#7c3aed)',
-                color: 'white',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                opacity: saving ? 0.7 : 1,
-              }}
+              className="flex-1 py-2.5 rounded-lg border-0 bg-gradient-to-r from-blue-500 to-violet-500 text-white text-sm font-semibold cursor-pointer shadow-lg shadow-blue-500/20 hover:opacity-95 disabled:opacity-70 disabled:cursor-not-allowed transition-all"
             >
               {saving ? '保存中...' : '保存'}
             </button>
