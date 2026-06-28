@@ -92,18 +92,19 @@ className="bg-transparent hover:bg-violet-600/10 transition-colors"
 
 ## 状态管理规范
 
-### Token 管理
-- Token 的读写通过 `useAppStore` 的 `setToken()` 统一处理，禁止在组件内直接操作 `localStorage`
-- **禁止**：`localStorage.setItem('token', t)` / `localStorage.getItem('token')`
-- **使用**：`const { token, setToken } = useAppStore()`
-
-### Token 传递
-- Token **不通过 props 传递**给子组件
-- 子组件直接从 `useAppStore` 读取：`const { token } = useAppStore()`
+### 登录态与 Cookie 校验 (HttpOnly)
+- **规则**：全站身份验证完全废弃基于 `localStorage` 的 Token 存储方案，迁移至安全的 `HttpOnly Cookie`。
+- **具体要求**：
+  - **禁止**在前端代码中调用 `localStorage.setItem('token', ...)`，也不允许在 Zustand Store 中维护与缓存活跃的 `token` 字符串。
+  - 前端路由守卫（如 `RequireAuth`）判断是否已登录，必须依据全局状态树中的 `state.user` 对象是否为空。
+  - 用户登录成功时，后端接口不再返回 `token`，而是返回已登录的用户档案对象。前端接收后，调用 `setUser(user)` 挂载到 Store。
+  - 应用在初始化/页面刷新时，调用 `getProfile()` 发起无参数请求核验 Cookie，如若成功则保存用户实体 `setUser(user)`，否则清空状态 `reset()` 引导至登录页。
+  - 登出动作必须向 `/api/v1/logout` 发起 POST 请求清空后端 Cookie 凭证，然后调用本地 `reset()`。
 
 ### Store 规范
-- `reset()` 必须重置所有字段到初始值（包括 `fillBlankLevel`、`exerciseResult`）
-- 新增全局状态时同步更新 `reset()` 函数
+- `reset()` 必须重置所有字段到初始值（包括 `fillBlankLevel`、`exerciseResult` 等，且将 `user` 设为 `null`）。
+- 新增全局状态时同步更新 `reset()` 函数。
+- **配置自同步**：在调用 `setLearningProfile(profile)` 更新用户个人设置时，必须自动提取其中的默认填空等级 `profile.fill_blank_level` 并覆盖赋值到全局 `fillBlankLevel` 字段，以保证开始学习时正确初始化用户的默认难度设定。
 
 ---
 
@@ -112,6 +113,7 @@ className="bg-transparent hover:bg-violet-600/10 transition-colors"
 ### 统一使用 `apiCall` 封装
 
 所有 API 请求必须通过 `src/services/api.ts` 中的具名函数，禁止在组件内裸调 `fetch`。
+- **凭证附带**：底层 API 通用请求器 `apiCall` 必须显式配置 `credentials: 'same-origin'`，保证浏览器发送请求时自动附带认证 Cookie，同时在 Headers 中移除手动拼接 `Authorization` Bearer Token 的逻辑。
 
 ```tsx
 // ✅ 正确：通过 services/api.ts 封装的函数
@@ -179,11 +181,40 @@ interface AuthUser {
 
 ---
 
+## 样式文件构建规范
+
+### Google 字体及外部样式 @import 优先级
+- **规则**：在 `style.css` 中引入外部 Google Fonts 字体或第三方样式表时，其 `@import url(...)` 规则必须放置在文件的**最顶部**（排在 `@import "tailwindcss";` 之前）。
+- **原因**：Tailwind v4 会在展开编译时在原地插入大量基础样式规则。如果将其他 `@import` 写在它的下方，会导致 PostCSS 报出 `@import must precede all other statements` 错误而造成 Vite 构建中断。
+
+---
+
 ## 安全规范
 
-### Token 存储（当前状态）
-当前 token 存储在 `localStorage`（存在 XSS 风险）。
-**待办**：迁移到 `HttpOnly Cookie`，需后端配合修改 `/login` 接口。
+### Cookie 安全隔离
+- 全站采用基于 `HttpOnly`、`SameSite=Lax`、`Path=/` 的安全 Cookie 存储 JWT。由于 Cookie 具备 `HttpOnly` 特性，前端 JavaScript 代码无法直接读取凭证，从而在物理上消除了 XSS 获取 Token 的安全隐患。
 
 ### 不要在 UI 中暴露服务端错误
-捕获到 `status >= 500` 的错误时，统一显示通用消息，不直接透传服务端错误字符串。
+- 捕获到 `status >= 500` 的错误时，统一显示通用消息，不直接透传服务端错误字符串。
+
+---
+
+## 前端 Vibe 最佳实践 (Frontend Best Practices)
+
+为了保证视觉体验的高级感、防范白屏崩溃、以及前后端并行开发，必须遵循以下规则：
+
+### 1. 动效与微交互 (Micro-interactions)
+- **拒绝硬性突变**：为所有的交互元素（按钮悬停、卡片悬停、弹窗显示、加载状态切换等）配置平滑的 Tailwind 过渡动画，例如：`transition-all duration-200 hover:scale-[1.01]`，或 `transition-colors duration-200`。
+- 交互状态的改变必须具有平滑渐变感，以建立高级、流畅的用户界面质感。
+
+### 2. Mock 数据先行 (Mock-First Development)
+- **前后端并行开发**：当新功能的后端 API 尚未编写完成或无法连通时，**优先在 `src/services/api.ts` 中实现对应的 mock 数据，并可模拟延迟 300-500ms 返回**。
+- 这有助于立即开始前端的页面布局、交互设计和状态测试，避免前端因“等待后端接口”而卡住。
+
+### 3. Zustand 状态树的衍生状态与 Selector
+- **避免状态冗余**：Zustand Store 中仅存储基础原始数据，不要存储能通过已有状态计算得出的派生状态（例如“已选择列表的长度”、“根据列表项过滤后的结果”等）。
+- 派生状态应在组件内部使用 React `useMemo` 计算，或使用 Zustand selector 进行提取，避免多处状态同步不同步导致的数据流 Bug。
+
+### 4. 防御性渲染与优雅降级 (Graceful Degradation)
+- **防崩溃/白屏**：对可能存在空指针的接口数据访问（如 `data?.title` 或 `list?.[0]?.name`）必须做好安全链（Optional Chaining）和默认空值保护。
+- 对于各种空数据状态，必须提供专用的占位组件或优雅的缺省文本展示；当接口请求加载时，必须呈现占位图（Skeleton）或平滑的加载动效，杜绝未处理的闪烁或直接空白。

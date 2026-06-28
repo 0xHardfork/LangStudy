@@ -137,3 +137,62 @@ backend/
 
 ### 2. 严格的类型转换与校验
 - **规则**：不可使用 `interface{}`/`any` 绕过静态类型系统。输入绑定参数必须设置合适的校验 tag（如 `binding:"required,gt=0"`）。
+
+---
+
+## 最佳实践与架构规范
+
+### 1. GORM 日志与慢查询监控
+- **规则**：数据库必须配置自定义日志桥接器，将 GORM SQL 执行日志、警告和错误重定向到全局 Zap 日志中。
+- **具体做法**：
+  - 慢查询阈值必须设定为 `200ms`。当 SQL 执行时间大于 `200ms` 时，必须自动输出 `WARN` 级别的慢查询警告日志。
+
+### 2. Gin Panic 结构化恢复中间件
+- **规则**：禁止使用原生的 `gin.Recovery()`。必须集成基于 Zap 的自定义 panic 恢复中间件，以确保发生崩溃时输出结构化的 JSON 堆栈日志，并向客户端返回统一且干净的错误响应。
+
+### 3. 模块化路由自注册
+- **规则**：每个业务包的 HTTP 控制器 Handler 必须暴露并实现 `RegisterRoutes(public, authed, admin *gin.RouterGroup)`，将子路由的声明和挂载内聚到各 Handler 内部。
+- **具体做法**：
+  - `cmd/server/main.go` 仅作为高层路由器分发中转，负责初始化核心分组和调用 Handler 注册方法，禁止在 `main.go` 内集中式裸写路由映射。
+
+### 4. 参数校验报错友好化 (中文翻译器)
+- **规则**：参数绑定（如 `ShouldBindJSON`）出错时，严禁直接返回原生 `err.Error()`。必须通过 `platform/validator.Translate(err)` 将 `validator` 校验错误翻译成可读的中文短句返回给客户端。
+
+### 5. 配置管理 (Viper 实例隔离)
+- **规则**：禁止在代码中直接使用全局 `viper.Get` / `viper.Set`。必须通过 `viper.New()` 实例化本地配置对象，并使用导出的 `config.Viper()` 进行统一读写和 `Reload()` 操作，保证测试的上下文环境隔离。
+
+### 6. 模型与数据表映射 (TableName 显式声明)
+- **规则**：在 `internal/` 或各模块下定义的 GORM 模型结构体（如 `Type` 实体），如果其命名的复数规则不符合标准英文复数（或与迁移表名不符，如 `dialogue_types`），必须显式实现 `TableName() string` 方法：
+  ```go
+  func (Type) TableName() string {
+      return "dialogue_types"
+  }
+  ```
+
+### 7. 安全 Cookie 身份校验 (HttpOnly)
+- **规则**：用户登录态校验必须迁移至 `HttpOnly` Cookie 架构。
+- **具体做法**：
+  - `/login` 成功后，通过 HTTP 响应头部注入名为 `token` 的 Cookie，设置 `HttpOnly: true`、`Path: "/"`，且 `Secure` 标记根据当前环境动态设定（生产环境必须开启）。
+  - `JWTMiddleware` 鉴权时优先尝试读取 Cookie，未读取到时作为降级备用手段提取 `Authorization` Bearer 头部凭证。
+  - 增加 `/logout` 接口，通过向客户端签发 `MaxAge: -1` 的 Cookie 来清理登录状态。
+
+---
+
+## 后端 Vibe 最佳实践 (Backend Best Practices)
+
+为了保证后端在面对大模型输出波动、快速迭代及团队协作时的代码质量，必须遵循以下规则：
+
+### 1. 防爆大模型响应 (Robust LLM JSON Handling)
+- **严格反序列化与安全降级**：所有解析大模型返回 JSON 的逻辑，必须设计对应的**错误处理与 Fallback / 重试机制**（如返回数据库默认值，或者友好向前端报错）。
+- **杜绝脆弱修补**：严禁编写脆弱的正则表达式或字符匹配补全逻辑来尝试“修复”损坏的 JSON，解析失败应直接作为 error 抛出或重试，不得让脏数据进入后续流程。
+
+### 2. 数据库迁移防遗漏 (Strict Database Migrations)
+- **禁拔河式修改**：凡涉及 GORM 模型结构体（`internal/*/model.go`）的修改，**必须**同步在 `migrations/` 目录下编写并保存对应的 SQL 迁移脚本（`*.up.sql` / `*.down.sql`）。
+- 禁止依赖 GORM AutoMigrate 进行本地和线上表结构的自动维护，以防因缺少历史演进追踪而在环境部署时发生 Schema 错位或静默报错。
+
+### 3. Zap 结构化日志可追溯性 (Traceable Logging)
+- **禁止无上下文的 Error 打印**：在打印 `Error` 或 `Warn` 级别日志时，**必须**使用结构化字段（如 `zap.Uint("userID", userID)`、`zap.Uint("articleID", articleID)`）携带当前操作的业务实体 ID。
+- 绝不能仅仅打印一个裸的错误字符串，确保在生产环境排查链路时日志清晰、可追溯。
+
+### 4. 级联取消与超时防护 (Cascade Timeout)
+- **全链路传递 Context**：所有发往第三方 API（如大模型调用、TTS 语音合成）的网络请求，必须显式传递具有合理 `Timeout` 限制（通常限制为 30s-60s）的上下文，并在 Service 级别支持 Context 取消检测，防止慢接口霸占连接池导致服务雪崩。
