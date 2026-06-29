@@ -10,11 +10,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSuccessMsg('')
 
     if (!username || !password) {
       setError('Username and password are required')
@@ -74,25 +76,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           throw new Error(result.msg || 'Registration failed')
         }
 
-        const loginResponse = await fetch('/api/v1/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ username, password }),
-        })
-
-        const loginResult = await loginResponse.json()
-
-        if (!loginResponse.ok || loginResult.code !== 0) {
-          throw new Error('Registered successfully, but login failed')
-        }
-
-        if (loginResult.data) {
-          onLoginSuccess(loginResult.data)
-        } else {
-          throw new Error('User profile not received after registration')
-        }
+        setSuccessMsg('注册成功！您的账号正在审核中，请联系管理员审核后登录。')
+        setError('')
+        setPassword('')
+        setConfirmPassword('')
+        setIsLogin(true)
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -128,6 +116,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             onClick={() => {
               setIsLogin(true)
               setError('')
+              setSuccessMsg('')
             }}
           >
             Sign In
@@ -138,6 +127,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             onClick={() => {
               setIsLogin(false)
               setError('')
+              setSuccessMsg('')
             }}
           >
             Register
@@ -148,6 +138,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           {error && (
             <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
               {error}
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-xs text-green-400">
+              {successMsg}
             </div>
           )}
 

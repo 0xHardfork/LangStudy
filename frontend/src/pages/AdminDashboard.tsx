@@ -24,6 +24,7 @@ interface UserData {
   id: number
   username: string
   role: string
+  is_approved: boolean
   created_at: string
 }
 
@@ -37,6 +38,29 @@ interface DialogueTypeData {
   updated_at: string
 }
 
+const EMOJI_OPTIONS = [
+  { value: '💬', label: '💬 Conversation' },
+  { value: '💼', label: '💼 Business & Work' },
+  { value: '🛍️', label: '🛍️ Shopping' },
+  { value: '🍜', label: '🍜 Food & Restaurant' },
+  { value: '🏥', label: '🏥 Health & Hospital' },
+  { value: '🎨', label: '🎨 Art & Hobby' },
+  { value: '🚨', label: '🚨 Incident & Alert' },
+  { value: '🛡️', label: '🛡️ Security' },
+  { value: '🔧', label: '🔧 DevOps & Tools' },
+  { value: '✈️', label: '✈️ Travel & Flight' },
+  { value: '🏨', label: '🏨 Hotel & Lodging' },
+  { value: '🏫', label: '🏫 School & Education' },
+  { value: '💻', label: '💻 Coding & IT' },
+  { value: '📚', label: '📚 Reading & Library' },
+  { value: '🗣️', label: '🗣️ Speaking & Pronunciation' },
+  { value: '⚙️', label: '⚙️ Settings & System' },
+  { value: '🧠', label: '🧠 Mind & Learning' },
+  { value: '🎵', label: '🎵 Music' },
+  { value: '🍿', label: '🍿 Movies & Entertainment' },
+  { value: '⚽', label: '⚽ Sports' }
+]
+
 export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) {
   const token = useAppStore(state => state.token!)
   const [activeTab, setActiveTab] = useState('users')
@@ -47,6 +71,7 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
 
   const [configLoading, setConfigLoading] = useState(false)
   const [configForm] = Form.useForm()
+  const [testingConfig, setTestingConfig] = useState(false)
 
   // Dialogue types state
   const [dtypes, setDtypes] = useState<DialogueTypeData[]>([])
@@ -82,7 +107,9 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
       })
       const result = await response.json()
       if (response.ok && result.code === 0) {
-        configForm.setFieldsValue(result.data)
+        setTimeout(() => {
+          configForm.setFieldsValue(result.data)
+        }, 100)
       } else {
         message.error(result.msg || 'Failed to fetch LLM config')
       }
@@ -185,6 +212,27 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
     }
   }
 
+  const handleApproveUser = async (id: number) => {
+    try {
+      const response = await fetch(`/api/v1/admin/users/${id}/approve`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      const result = await response.json()
+      if (response.ok && result.code === 0) {
+        message.success('User approved successfully')
+        fetchUsers()
+      } else {
+        message.error(result.msg || 'Failed to approve user')
+      }
+    } catch {
+      message.error('Connection failed')
+    }
+  }
+
   const handleSaveConfig = async (values: unknown) => {
     try {
       const response = await fetch('/api/v1/admin/llm-config', {
@@ -203,6 +251,34 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
       }
     } catch {
       message.error('Connection failed')
+    }
+  }
+
+  const handleTestConfig = async () => {
+    try {
+      const values = await configForm.validateFields(['api_url', 'api_key', 'model_name'])
+      setTestingConfig(true)
+      const response = await fetch('/api/v1/admin/llm-config/test', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(values)
+      })
+      const result = await response.json()
+      if (response.ok && result.code === 0) {
+        message.success(`测试成功！大模型响应："${result.data.response}"`)
+      } else {
+        message.error(result.msg || '测试失败，请检查配置')
+      }
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'errorFields' in err) {
+        return
+      }
+      message.error((err as Error).message || '连接失败')
+    } finally {
+      setTestingConfig(false)
     }
   }
 
@@ -228,6 +304,26 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
       )
     },
     {
+      title: 'Status',
+      dataIndex: 'is_approved',
+      key: 'is_approved',
+      render: (isApproved: boolean, record: UserData) => (
+        record.role === 'admin' ? (
+          <span className="px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">
+            Active
+          </span>
+        ) : isApproved ? (
+          <span className="px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">
+            Approved
+          </span>
+        ) : (
+          <span className="px-2 py-0.5 rounded text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+            Pending Approval
+          </span>
+        )
+      )
+    },
+    {
       title: 'Created At',
       dataIndex: 'created_at',
       key: 'created_at',
@@ -240,18 +336,30 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
         record.id === user.id ? (
           <span className="text-xs text-slate-500">Current User</span>
         ) : (
-          <Popconfirm
-            title="Delete the user"
-            description="Are you sure you want to delete this user?"
-            onConfirm={() => handleDeleteUser(record.id)}
-            okText="Yes"
-            cancelText="No"
-            className="cursor-pointer"
-          >
-            <Button type="link" danger size="small">
-              Delete
-            </Button>
-          </Popconfirm>
+          <div className="flex gap-2">
+            {!record.is_approved && record.role !== 'admin' && (
+              <Button
+                type="link"
+                onClick={() => handleApproveUser(record.id)}
+                size="small"
+                className="text-green-500 hover:text-green-400 p-0 mr-2"
+              >
+                Approve
+              </Button>
+            )}
+            <Popconfirm
+              title="Delete the user"
+              description="Are you sure you want to delete this user?"
+              onConfirm={() => handleDeleteUser(record.id)}
+              okText="Yes"
+              cancelText="No"
+              className="cursor-pointer"
+            >
+              <Button type="link" danger size="small" className="p-0">
+                Delete
+              </Button>
+            </Popconfirm>
+          </div>
         )
       )
     }
@@ -350,6 +458,7 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
     {
       key: 'llm',
       label: 'LLM Configurations',
+      forceRender: true,
       children: (
         <Card className="bg-slate-900 border-slate-800 text-white rounded-xl shadow-xl">
           <h3 className="text-lg font-bold text-white mb-6">Large Language Model API Settings</h3>
@@ -385,29 +494,121 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
 
               <Form.Item
                 name="prompt_tpl"
-                label="Article Prompt Template"
+                label="Dialogue Generation Prompt Template (对话生成 Prompt 模版)"
                 rules={[{ required: true, message: 'Prompt Template is required' }]}
+                extra={
+                  <div className="mt-2 text-xs text-slate-400 border border-slate-800/80 bg-slate-950/40 rounded-lg p-3 space-y-1.5">
+                    <div>
+                      <strong>可使用变量：</strong>
+                      <code className="text-blue-400 ml-1">{"{{language}}"}</code> (目标语言),
+                      <code className="text-blue-400 ml-1">{"{{level}}"}</code> (难度等级),
+                      <code className="text-blue-400 ml-1">{"{{topic}}"}</code> (主题名称),
+                      <code className="text-blue-400 ml-1">{"{{topic_description}}"}</code> (主题详细描述)。
+                    </div>
+                    <div>
+                      <strong>模版示例：</strong>
+                      <pre className="text-slate-500 font-mono text-[10px] mt-1 bg-slate-950 p-2 rounded overflow-x-auto leading-relaxed">
+{`Generate a natural dialogue in {{language}} about the topic "{{topic}}".{{topic_description}}
+
+The target learner's level is: {{level}}. Adjust the language difficulty strictly according to these guidelines:
+1. If level is "beginner": Use simple vocabulary, basic daily words, simple sentence structures (S-V-O), short sentences, and primarily present tense. Avoid complex grammar or idioms.
+2. If level is "intermediate": Use common vocabulary, standard everyday expressions, compound/complex sentences (e.g., using "although", "because", "who", "which"), and a mix of tenses.
+3. If level is "advanced": Use rich vocabulary, idiomatic expressions, complex syntactic structures (e.g., inversion, conditional, subjunctive), longer sentences, and native-like phrasing.
+
+The dialogue should have exactly 16 lines, alternating between speaker A (female) and speaker B (male).
+Return ONLY a JSON array with no other text, in this exact format:
+[{"speaker":"A","original_text":"<text in {{language}}>","translation":"<Chinese translation>"},...]`}
+                      </pre>
+                    </div>
+                  </div>
+                }
               >
                 <Input.TextArea rows={6} placeholder="Template for dialogue generation..." />
               </Form.Item>
 
               <Form.Item
                 name="vocab_prompt_tpl"
-                label="Dialogue Vocabulary Prompt Template"
+                label="Vocabulary Extraction Prompt Template (核心词汇提取 Prompt 模版)"
                 rules={[{ required: true, message: 'Vocabulary Prompt Template is required' }]}
+                extra={
+                  <div className="mt-2 text-xs text-slate-400 border border-slate-800/80 bg-slate-950/40 rounded-lg p-3 space-y-1.5">
+                    <div>
+                      <strong>可使用变量：</strong>
+                      <code className="text-blue-400 ml-1">{"{{max_line_index}}"}</code> (最大行索引，通常为 15),
+                      <code className="text-blue-400 ml-1">{"{{lines_json}}"}</code> (当前生成的 16 行对话 JSON 数组数据)。
+                    </div>
+                    <div>
+                      <strong>模版示例：</strong>
+                      <pre className="text-slate-500 font-mono text-[10px] mt-1 bg-slate-950 p-2 rounded overflow-x-auto leading-relaxed">
+{`Given these dialogue lines (indexed 0 to {{max_line_index}}):
+{{lines_json}}
+
+For each line, identify the top 3 most important vocabulary words for language learners.
+Rate each word's importance from 1 (most important) to 4 (least important).
+Word index is the 0-based position of the word when the sentence is split by spaces.
+Return ONLY a JSON array with no other text:
+[{"line_index":0,"word":"<word>","word_index":0,"importance":1},...]`}
+                      </pre>
+                    </div>
+                  </div>
+                }
               >
                 <Input.TextArea rows={6} placeholder="Template for vocabulary extraction..." />
               </Form.Item>
 
               <Form.Item
                 name="grammar_prompt_tpl"
-                label="Grammar Analysis & Cloze Prompt Template"
+                label="Grammar Analysis & Cloze Quiz Prompt Template (语法分析与完形填空 Prompt 模版)"
                 rules={[{ required: true, message: 'Grammar Prompt Template is required' }]}
+                extra={
+                  <div className="mt-2 text-xs text-slate-400 border border-slate-800/80 bg-slate-950/40 rounded-lg p-3 space-y-1.5">
+                    <div>
+                      <strong>可使用变量：</strong>
+                      <code className="text-blue-400 ml-1">{"{{sentence}}"}</code> (待分析的原始英文单句内容)。
+                    </div>
+                    <div>
+                      <strong>模版示例：</strong>
+                      <pre className="text-slate-500 font-mono text-[10px] mt-1 bg-slate-950 p-2 rounded overflow-x-auto leading-relaxed">
+{`You are an expert English grammar teacher. Analyze the grammar structure of the following sentence and generate Cloze multiple-choice questions testing key grammar points.
+
+Sentence: "{{sentence}}"
+
+Generate a JSON object strictly matching this schema:
+{
+  "translation": "accurate Chinese translation of the sentence",
+  "explanation": "Detailed grammatical analysis of the sentence structure and explanations of the syntax rules used.",
+  "quizzes": [
+    {
+      "question": "Sentence with blank (use ___ for blank)",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct_option": 0,
+      "tags": ["Grammar Concept Tag 1 (e.g. Attributive Clause)"],
+      "explanations": {
+        "0": "Explanation for Option A",
+        "1": "Explanation for Option B",
+        "2": "Explanation for Option C",
+        "3": "Explanation for Option D"
+      }
+    }
+  ]
+}`}
+                      </pre>
+                    </div>
+                  </div>
+                }
               >
                 <Input.TextArea rows={12} placeholder="Template for grammar analysis and cloze generation..." />
               </Form.Item>
 
-              <Form.Item className="mb-0 flex justify-end">
+              <Form.Item className="mb-0 flex justify-end space-x-3">
+                <Button
+                  type="default"
+                  onClick={handleTestConfig}
+                  loading={testingConfig}
+                  className="border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 rounded-lg px-6 cursor-pointer mr-3"
+                >
+                  Test Connection
+                </Button>
                 <Button type="primary" htmlType="submit" className="bg-blue-500 border-none rounded-lg px-6 cursor-pointer">
                   Save Configurations
                 </Button>
@@ -523,9 +724,13 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
               <Form.Item
                 name="emoji"
                 label="Emoji"
-                rules={[{ required: true, message: 'Please enter an emoji' }]}
+                rules={[{ required: true, message: 'Please select an emoji' }]}
               >
-                <Input placeholder="💬" maxLength={4} style={{ width: '80px' }} />
+                <Select
+                  placeholder="Select emoji"
+                  options={EMOJI_OPTIONS}
+                  style={{ width: '180px' }}
+                />
               </Form.Item>
 
               <Form.Item

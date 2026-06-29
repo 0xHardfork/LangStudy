@@ -1,10 +1,11 @@
 CREATE TABLE IF NOT EXISTS users (
-    id         BIGSERIAL PRIMARY KEY,
-    username   VARCHAR(64)  NOT NULL UNIQUE,
-    password   VARCHAR(255) NOT NULL,
-    role       VARCHAR(20)  NOT NULL DEFAULT 'user',
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    id          BIGSERIAL PRIMARY KEY,
+    username    VARCHAR(64)  NOT NULL UNIQUE,
+    password    VARCHAR(255) NOT NULL,
+    role        VARCHAR(20)  NOT NULL DEFAULT 'user',
+    is_approved BOOLEAN      NOT NULL DEFAULT false,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS user_profiles (

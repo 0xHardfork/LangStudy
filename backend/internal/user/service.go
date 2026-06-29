@@ -19,6 +19,8 @@ type Service interface {
 	CreateUser(ctx context.Context, req *CreateUserRequest) error
 	DeleteUser(ctx context.Context, id uint) error
 	ListUsers(ctx context.Context, offset, limit int) ([]*ProfileResponse, error)
+	ChangePassword(ctx context.Context, userID uint, req *ChangePasswordRequest) error
+	ApproveUser(ctx context.Context, id uint) error
 
 	GetLearningProfile(ctx context.Context, userID uint) (*UserProfile, error)
 	UpsertLearningProfile(ctx context.Context, userID uint, req *UpsertProfileRequest) (*UserProfile, error)
@@ -45,9 +47,10 @@ func (s *service) Register(ctx context.Context, req *RegisterRequest) error {
 	}
 
 	u := &User{
-		Username: req.Username,
-		Password: string(hashed),
-		Role:     "user",
+		Username:   req.Username,
+		Password:   string(hashed),
+		Role:       "user",
+		IsApproved: false,
 	}
 
 	if err := s.store.Create(ctx, u); err != nil {
@@ -67,6 +70,10 @@ func (s *service) Login(ctx context.Context, req *LoginRequest) (string, *Profil
 		return "", nil, fmt.Errorf("invalid credentials")
 	}
 
+	if u.Role != "admin" && !u.IsApproved {
+		return "", nil, fmt.Errorf("您的账号正在审核中，请联系管理员审核后再试")
+	}
+
 	claims := jwt.MapClaims{
 		"user_id": u.ID,
 		"role":    u.Role,
@@ -81,10 +88,11 @@ func (s *service) Login(ctx context.Context, req *LoginRequest) (string, *Profil
 	}
 
 	return signed, &ProfileResponse{
-		ID:        u.ID,
-		Username:  u.Username,
-		Role:      u.Role,
-		CreatedAt: u.CreatedAt,
+		ID:         u.ID,
+		Username:   u.Username,
+		Role:       u.Role,
+		IsApproved: u.IsApproved,
+		CreatedAt:  u.CreatedAt,
 	}, nil
 }
 
@@ -94,10 +102,11 @@ func (s *service) GetProfile(ctx context.Context, userID uint) (*ProfileResponse
 		return nil, err
 	}
 	return &ProfileResponse{
-		ID:        u.ID,
-		Username:  u.Username,
-		Role:      u.Role,
-		CreatedAt: u.CreatedAt,
+		ID:         u.ID,
+		Username:   u.Username,
+		Role:       u.Role,
+		IsApproved: u.IsApproved,
+		CreatedAt:  u.CreatedAt,
 	}, nil
 }
 
@@ -108,9 +117,10 @@ func (s *service) CreateUser(ctx context.Context, req *CreateUserRequest) error 
 	}
 
 	u := &User{
-		Username: req.Username,
-		Password: string(hashed),
-		Role:     req.Role,
+		Username:   req.Username,
+		Password:   string(hashed),
+		Role:       req.Role,
+		IsApproved: true,
 	}
 
 	return s.store.Create(ctx, u)
@@ -128,13 +138,23 @@ func (s *service) ListUsers(ctx context.Context, offset, limit int) ([]*ProfileR
 	resp := make([]*ProfileResponse, len(list))
 	for i, u := range list {
 		resp[i] = &ProfileResponse{
-			ID:        u.ID,
-			Username:  u.Username,
-			Role:      u.Role,
-			CreatedAt: u.CreatedAt,
+			ID:         u.ID,
+			Username:   u.Username,
+			Role:       u.Role,
+			IsApproved: u.IsApproved,
+			CreatedAt:  u.CreatedAt,
 		}
 	}
 	return resp, nil
+}
+
+func (s *service) ApproveUser(ctx context.Context, id uint) error {
+	u, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+	u.IsApproved = true
+	return s.store.Update(ctx, u)
 }
 
 func (s *service) GetLearningProfile(ctx context.Context, userID uint) (*UserProfile, error) {
@@ -185,4 +205,23 @@ func (s *service) UpsertLearningProfile(ctx context.Context, userID uint, req *U
 	}
 
 	return profile, nil
+}
+
+func (s *service) ChangePassword(ctx context.Context, userID uint, req *ChangePasswordRequest) error {
+	u, err := s.store.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("user not found")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.OldPassword)); err != nil {
+		return fmt.Errorf("incorrect old password")
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+
+	u.Password = string(hashed)
+	return s.store.Update(ctx, u)
 }

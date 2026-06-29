@@ -85,7 +85,39 @@ func (c *Client) Call(ctx context.Context, apiURL, apiKey, modelName, prompt str
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			lastErr = fmt.Errorf("attempt %d returned %d: %s", attempt, resp.StatusCode, string(body))
+
+			// Try to parse OpenAI/Gemini error structure
+			var errResp struct {
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			apiErrorMsg := ""
+			if json.Unmarshal(body, &errResp) == nil && errResp.Error.Message != "" {
+				apiErrorMsg = errResp.Error.Message
+			} else {
+				apiErrorMsg = string(body)
+			}
+
+			// Map to user-friendly messages in Chinese
+			var friendlyErr error
+			switch resp.StatusCode {
+			case http.StatusUnauthorized:
+				friendlyErr = fmt.Errorf("LLM 接口授权失败 (401)：请检查您的 API Key 是否正确填写或已失效。错误详情：%s", apiErrorMsg)
+			case 402: // Payment Required / Insufficient Balance
+				friendlyErr = fmt.Errorf("LLM 账户余额不足 (402)：请前往大模型服务商后台充值后重试。错误详情：%s", apiErrorMsg)
+			case http.StatusTooManyRequests:
+				friendlyErr = fmt.Errorf("LLM 请求过于频繁 (429)：已超出接口限频限制，请稍候再试。错误详情：%s", apiErrorMsg)
+			case http.StatusNotFound:
+				friendlyErr = fmt.Errorf("LLM 资源未找到 (404)：请检查配置的模型名称或接口端点 URL 是否正确。错误详情：%s", apiErrorMsg)
+			case http.StatusInternalServerError, http.StatusServiceUnavailable, http.StatusBadGateway:
+				friendlyErr = fmt.Errorf("LLM 服务端暂时不可用 (状态码 %d)：服务商接口故障或维护中，请稍后重试。错误详情：%s", resp.StatusCode, apiErrorMsg)
+			default:
+				friendlyErr = fmt.Errorf("LLM 接口调用失败 (状态码 %d)：%s", resp.StatusCode, apiErrorMsg)
+			}
+
+			lastErr = friendlyErr
+
 			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 				c.log.Warn("llm returned transient status, retrying", zap.Int("attempt", attempt), zap.Int("status", resp.StatusCode))
 				select {

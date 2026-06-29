@@ -13,6 +13,7 @@ type Store interface {
 	GetByID(ctx context.Context, id uint) (*User, error)
 	GetByUsername(ctx context.Context, username string) (*User, error)
 	List(ctx context.Context, offset, limit int) ([]*User, error)
+	Update(ctx context.Context, user *User) error
 	Delete(ctx context.Context, id uint) error
 
 	GetProfileByUserID(ctx context.Context, userID uint) (*UserProfile, error)
@@ -94,6 +95,13 @@ func (s *gormStore) UpsertProfile(ctx context.Context, profile *UserProfile) err
 		if err := s.db.WithContext(ctx).Save(profile).Error; err != nil {
 			return fmt.Errorf("save user profile: %w", err)
 		}
+	}
+	return nil
+}
+
+func (s *gormStore) Update(ctx context.Context, user *User) error {
+	if err := s.db.WithContext(ctx).Save(user).Error; err != nil {
+		return fmt.Errorf("update user: %w", err)
 	}
 	return nil
 }

@@ -188,25 +188,71 @@ func (s *gormStore) MarkDialogueRejected(ctx context.Context, id uint) error {
 
 // GetActiveDialogue returns the most recently updated incomplete dialogue for the user.
 func (s *gormStore) GetActiveDialogue(ctx context.Context, userID uint) (*ActiveDialogueResult, error) {
+	// 1. Try to find an in-progress dialogue from user_dialogue_progress
 	var progress UserDialogueProgress
 	err := s.db.WithContext(ctx).
 		Where("user_id = ? AND is_completed = false", userID).
 		Order("updated_at DESC").
 		First(&progress).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+
+	if err == nil {
+		d, err := s.GetDialogueByIDPublic(ctx, progress.DialogueID)
+		if err != nil {
+			return nil, err
 		}
+		return &ActiveDialogueResult{
+			Dialogue:         d,
+			CurrentLineIndex: progress.CurrentLineIndex,
+		}, nil
+	}
+
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, fmt.Errorf("get active dialogue progress: %w", err)
 	}
-	d, err := s.GetDialogueByIDPublic(ctx, progress.DialogueID)
-	if err != nil {
-		return nil, err
+
+	// 2. If no in-progress record, check the user's latest generated dialogue
+	var latestDialogue Dialogue
+	err = s.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("id DESC").
+		First(&latestDialogue).Error
+
+	if err == nil {
+		// Check if this latest dialogue has any progress record
+		var prog UserDialogueProgress
+		progErr := s.db.WithContext(ctx).
+			Where("user_id = ? AND dialogue_id = ?", userID, latestDialogue.ID).
+			First(&prog).Error
+
+		if errors.Is(progErr, gorm.ErrRecordNotFound) {
+			// No progress record exists, meaning it was generated but not started.
+			// Return it as active with line index 0.
+			d, err := s.GetDialogueByIDPublic(ctx, latestDialogue.ID)
+			if err != nil {
+				return nil, err
+			}
+			return &ActiveDialogueResult{
+				Dialogue:         d,
+				CurrentLineIndex: 0,
+			}, nil
+		} else if progErr == nil && !prog.IsCompleted {
+			// Fallback: progress exists but was not found in step 1
+			d, err := s.GetDialogueByIDPublic(ctx, latestDialogue.ID)
+			if err != nil {
+				return nil, err
+			}
+			return &ActiveDialogueResult{
+				Dialogue:         d,
+				CurrentLineIndex: prog.CurrentLineIndex,
+			}, nil
+		}
 	}
-	return &ActiveDialogueResult{
-		Dialogue:         d,
-		CurrentLineIndex: progress.CurrentLineIndex,
-	}, nil
+
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("get latest dialogue: %w", err)
+	}
+
+	return nil, nil
 }
 
 // UpsertProgress creates or updates a user's progress record for a dialogue.

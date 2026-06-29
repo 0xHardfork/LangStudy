@@ -20,8 +20,7 @@ async function apiCall<T>(_token: string | null | undefined, path: string, optio
   }
   const json = await res.json()
   if (json.code !== 0) {
-    if (res.status >= 500) throw new Error('服务器出错，请稍后重试')
-    throw new Error(json.msg ?? 'API error')
+    throw new Error(json.msg || '服务器内部出错')
   }
   return json.data as T
 }
@@ -43,6 +42,16 @@ export function upsertLearningProfile(
   payload: Omit<UserLearningProfile, 'id' | 'user_id'>,
 ): Promise<UserLearningProfile> {
   return apiCall<UserLearningProfile>(token, '/me/profile', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function changePassword(
+  token: string,
+  payload: { old_password: string; new_password: string },
+): Promise<{ ok: boolean }> {
+  return apiCall<{ ok: boolean }>(token, '/me/password', {
     method: 'PUT',
     body: JSON.stringify(payload),
   })
@@ -198,6 +207,12 @@ export function getDueGrammarReviews(token: string): Promise<GrammarQuizReviewDe
 
 export function regenerateGrammarSentence(token: string, sentenceId: number): Promise<GrammarSentence> {
   return apiCall<GrammarSentence>(token, `/grammar/sentence/${sentenceId}/regenerate`, {
+    method: 'POST',
+  })
+}
+
+export function rejectDialogue(token: string, dialogueId: number): Promise<{ ok: boolean }> {
+  return apiCall<{ ok: boolean }>(token, `/dialogue/${dialogueId}/reject`, {
     method: 'POST',
   })
 }

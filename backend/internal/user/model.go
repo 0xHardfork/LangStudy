@@ -8,12 +8,13 @@ import (
 )
 
 type User struct {
-	ID        uint      `gorm:"primaryKey"`
-	Username  string    `gorm:"uniqueIndex;size:64;not null"`
-	Password  string    `gorm:"not null"`
-	Role      string    `gorm:"size:20;not null;default:'user'"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID         uint      `gorm:"primaryKey"`
+	Username   string    `gorm:"uniqueIndex;size:64;not null"`
+	Password   string    `gorm:"not null"`
+	Role       string    `gorm:"size:20;not null;default:'user'"`
+	IsApproved bool      `gorm:"column:is_approved;not null;default:false"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type RegisterRequest struct {
@@ -27,10 +28,11 @@ type LoginRequest struct {
 }
 
 type ProfileResponse struct {
-	ID        uint      `json:"id"`
-	Username  string    `json:"username"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         uint      `json:"id"`
+	Username   string    `json:"username"`
+	Role       string    `json:"role"`
+	IsApproved bool      `json:"is_approved"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type CreateUserRequest struct {
@@ -84,3 +86,9 @@ type UpsertProfileRequest struct {
 	TargetLanguages TargetLanguages `json:"target_languages" binding:"required"`
 	FillBlankLevel  int             `json:"fill_blank_level"  binding:"required,min=1,max=4"`
 }
+
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required,min=8"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}
+

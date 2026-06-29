@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { upsertLearningProfile } from '../services/api'
+import { upsertLearningProfile, changePassword } from '../services/api'
 import type { UserLearningProfile } from '../types'
 import { LANGUAGE_LABELS, LEVEL_LABELS } from '../types'
 import { useAppStore } from '../store/useAppStore'
@@ -29,6 +29,10 @@ export default function UserProfileModal({ initialProfile, onSave, onClose }: Pr
   const [fillBlankLevel, setFillBlankLevel] = useState(1)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPasswordFields, setShowPasswordFields] = useState(false)
+  const [oldPassword, setOldPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
     if (initialProfile) {
@@ -51,6 +55,16 @@ export default function UserProfileModal({ initialProfile, onSave, onClose }: Pr
     setSaving(true)
 
     try {
+      if (showPasswordFields) {
+        if (newPassword.length < 8) {
+          throw new Error('新密码长度必须至少为 8 位')
+        }
+        if (newPassword !== confirmPassword) {
+          throw new Error('两次输入的新密码不一致')
+        }
+        await changePassword(token, { old_password: oldPassword, new_password: newPassword })
+      }
+
       const payload = {
         nickname: nickname.trim(),
         native_language: nativeLang,
@@ -105,6 +119,63 @@ export default function UserProfileModal({ initialProfile, onSave, onClose }: Pr
               onChange={(e) => setNickname(e.target.value)}
               className="w-full rounded-lg border border-slate-800 bg-slate-950/50 p-2.5 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors"
             />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPasswordFields(!showPasswordFields)
+                setError(null)
+              }}
+              className="text-left text-xs text-violet-400 hover:text-violet-300 font-semibold cursor-pointer transition-colors"
+            >
+              {showPasswordFields ? '隐藏密码修改 ▲' : '修改账户密码 ▼'}
+            </button>
+
+            {showPasswordFields && (
+              <div className="flex flex-col gap-3 p-3.5 rounded-xl border border-slate-800 bg-slate-950/20 animate-fadeIn">
+                <div className="flex flex-col gap-1.5">
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    旧密码
+                  </label>
+                  <input
+                    type="password"
+                    required={showPasswordFields}
+                    placeholder="请输入旧密码"
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950/50 p-2.5 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    新密码
+                  </label>
+                  <input
+                    type="password"
+                    required={showPasswordFields}
+                    placeholder="请输入新密码（至少8位）"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950/50 p-2.5 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    确认新密码
+                  </label>
+                  <input
+                    type="password"
+                    required={showPasswordFields}
+                    placeholder="请再次输入新密码"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950/50 p-2.5 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">

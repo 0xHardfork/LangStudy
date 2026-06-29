@@ -107,9 +107,11 @@ func main() {
 	userService := user.NewService(userStore, cfg, redisClient)
 	userHandler := user.NewHandler(userService, cfg)
 
+	llmCli := llm.NewClient(log)
+
 	llmStore := llmconfig.NewStore(db)
 	llmService := llmconfig.NewService(llmStore)
-	llmHandler := llmconfig.NewHandler(llmService)
+	llmHandler := llmconfig.NewHandler(llmService, llmCli)
 
 	// Sync LLM config from environment variables if present (useful for local re-init)
 	envApiUrl := os.Getenv("LLM_API_URL")
@@ -143,8 +145,6 @@ func main() {
 			log.Warn("failed to fetch LLM config for environment variables sync", zap.Error(err))
 		}
 	}
-
-	llmCli := llm.NewClient(log)
 
 	dialogueStore := dialogue.NewStore(db)
 	dialogueService := dialogue.NewService(dialogueStore, llmStore, log, "static", llmCli)
@@ -196,9 +196,9 @@ func main() {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.App.Port),
 		Handler:      r,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  3 * time.Minute,
+		WriteTimeout: 3 * time.Minute,
+		IdleTimeout:  3 * time.Minute,
 	}
 
 	go func() {

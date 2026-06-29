@@ -36,7 +36,7 @@ func NewService(store Store, llmSvc llmconfig.Service, log *zap.Logger, llmCli *
 	}
 }
 
-const grammarPromptTemplate = `You are an expert English grammar teacher. Analyze the grammar structure of the following sentence and generate a Cloze multiple-choice question testing a key grammar point.
+const grammarPromptTemplate = `You are an expert English grammar teacher. Analyze the grammar structure of the following sentence and generate Cloze multiple-choice questions testing key grammar points.
 
 Sentence: "%s"
 
@@ -44,26 +44,28 @@ Generate a JSON object strictly matching this schema:
 {
   "translation": "accurate Chinese translation of the sentence",
   "explanation": "Detailed grammatical analysis of the sentence structure (Subject, Verb, Object, Clauses, Modifiers, etc.) and explanations of the syntax rules used.",
-  "quiz": {
-    "question": "The sentence with the key grammar word/phrase replaced by ____ (e.g., 'The teacher who ____ us English has left the school.')",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correct_option": 0,
-    "tags": ["Grammar Concept Tag 1 (e.g. Attributive Clause)", "Grammar Concept Tag 2 (e.g. Verb Tense)"],
-    "explanations": {
-      "0": "Pedagogical explanation of why Option A is correct or why it is a common incorrect trap.",
-      "1": "Pedagogical explanation of why Option B is correct or why it is a common incorrect trap.",
-      "2": "Pedagogical explanation of why Option C is correct or why it is a common incorrect trap.",
-      "3": "Pedagogical explanation of why Option D is correct or why it is a common incorrect trap."
+  "quizzes": [
+    {
+      "question": "The sentence with the key grammar word/phrase replaced by ____ (e.g., 'The teacher who ____ us English has left the school.')",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct_option": 0,
+      "tags": ["Grammar Concept Tag 1 (e.g. Attributive Clause)"],
+      "explanations": {
+        "0": "Pedagogical explanation of why Option A is correct or why it is a common incorrect trap.",
+        "1": "Pedagogical explanation of why Option B is correct or why it is a common incorrect trap.",
+        "2": "Pedagogical explanation of why Option C is correct or why it is a common incorrect trap.",
+        "3": "Pedagogical explanation of why Option D is correct or why it is a common incorrect trap."
+      }
     }
-  }
+  ]
 }
 
 Guidelines:
-1. Ensure the JSON output is valid and can be parsed directly. DO NOT put trailing commas (e.g., placing a comma after the last key-value pair in an object or array before the closing brace/bracket).
-2. The Cloze question's correct option must fill the blank '____' to reconstruct the original sentence exactly.
-3. The other options (distractors) should represent typical grammatical mistakes made by ESL learners (e.g., wrong verb tense, incorrect pronoun, incorrect word form).
-4. Provide clear, supportive explanations for both the correct answer and each incorrect option.
-5. Provide 1 to 3 relevant grammatical tags.
+1. Identify all key grammar points in the sentence. For each key grammar point identified, generate one multiple-choice Cloze question. The number of generated quizzes must equal the number of key grammar points.
+2. Ensure the JSON output is valid and can be parsed directly. DO NOT put trailing commas (e.g., placing a comma after the last key-value pair in an object or array before the closing brace/bracket).
+3. The Cloze question's correct option must fill the blank '____' to reconstruct the original sentence exactly.
+4. The other options (distractors) should represent typical grammatical mistakes made by ESL learners (e.g., wrong verb tense, incorrect pronoun, incorrect word form).
+5. Provide clear, supportive explanations for both the correct answer and each incorrect option.
 `
 
 func buildGrammarPrompt(tpl string, sentence string) string {
@@ -203,13 +205,13 @@ func (s *svc) AnalyzeText(ctx context.Context, userID uint, req *AnalyzeRequest)
 			var parsed struct {
 				Translation string            `json:"translation"`
 				Explanation string            `json:"explanation"`
-				Quiz        struct {
+				Quizzes     []struct {
 					Question      string                 `json:"question"`
 					Options       []string               `json:"options"`
 					CorrectOption int                    `json:"correct_option"`
 					Explanations  map[string]interface{} `json:"explanations"`
 					Tags          []string               `json:"tags"`
-				} `json:"quiz"`
+				} `json:"quizzes"`
 			}
 
 			if err := json.Unmarshal([]byte(repairedJSON), &parsed); err != nil {
@@ -225,27 +227,6 @@ func (s *svc) AnalyzeText(ctx context.Context, userID uint, req *AnalyzeRequest)
 				return
 			}
 
-			cleanExplanations := make(map[string]string)
-			for k, v := range parsed.Quiz.Explanations {
-				if k == "tags" {
-					if parsed.Quiz.Tags == nil || len(parsed.Quiz.Tags) == 0 {
-						if slice, ok := v.([]interface{}); ok {
-							for _, item := range slice {
-								if str, ok := item.(string); ok {
-									parsed.Quiz.Tags = append(parsed.Quiz.Tags, str)
-								}
-							}
-						}
-					}
-					continue
-				}
-				if str, ok := v.(string); ok {
-					cleanExplanations[k] = str
-				} else {
-					cleanExplanations[k] = fmt.Sprintf("%v", v)
-				}
-			}
-
 			sentence := GrammarSentence{
 				SentenceIndex: idx,
 				OriginalText:  sText,
@@ -255,16 +236,39 @@ func (s *svc) AnalyzeText(ctx context.Context, userID uint, req *AnalyzeRequest)
 				CreatedAt:     time.Now(),
 			}
 
-			if parsed.Quiz.Question != "" && len(parsed.Quiz.Options) == 4 {
-				quiz := GrammarQuiz{
-					Question:      parsed.Quiz.Question,
-					Options:       JSONOptions(parsed.Quiz.Options),
-					CorrectOption: parsed.Quiz.CorrectOption,
-					Explanations:  JSONExplanations(cleanExplanations),
-					Tags:          PostgresTags(parsed.Quiz.Tags),
-					CreatedAt:     time.Now(),
+			for _, q := range parsed.Quizzes {
+				cleanExplanations := make(map[string]string)
+				for k, v := range q.Explanations {
+					if k == "tags" {
+						if q.Tags == nil || len(q.Tags) == 0 {
+							if slice, ok := v.([]interface{}); ok {
+								for _, item := range slice {
+									if str, ok := item.(string); ok {
+										q.Tags = append(q.Tags, str)
+									}
+								}
+							}
+						}
+						continue
+					}
+					if str, ok := v.(string); ok {
+						cleanExplanations[k] = str
+					} else {
+						cleanExplanations[k] = fmt.Sprintf("%v", v)
+					}
 				}
-				sentence.Quizzes = append(sentence.Quizzes, quiz)
+
+				if q.Question != "" && len(q.Options) == 4 {
+					quiz := GrammarQuiz{
+						Question:      q.Question,
+						Options:       JSONOptions(q.Options),
+						CorrectOption: q.CorrectOption,
+						Explanations:  JSONExplanations(cleanExplanations),
+						Tags:          PostgresTags(q.Tags),
+						CreatedAt:     time.Now(),
+					}
+					sentence.Quizzes = append(sentence.Quizzes, quiz)
+				}
 			}
 
 			sentences[idx] = sentence

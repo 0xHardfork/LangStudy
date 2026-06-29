@@ -22,6 +22,7 @@ type Service interface {
 	UpdateProgress(ctx context.Context, userID, dialogueID uint, lineIndex int, completed bool) error
 	GetDialogue(ctx context.Context, id, userID uint) (*Dialogue, error)
 	ListDialogues(ctx context.Context, userID uint) ([]Dialogue, error)
+	RejectDialogue(ctx context.Context, id uint) error
 
 	ListTopics(ctx context.Context) ([]Type, error)
 	CreateTopic(ctx context.Context, req *CreateTopicRequest) (*Type, error)
@@ -86,6 +87,10 @@ func (s *service) GetActiveDialogue(ctx context.Context, userID uint) (*ActiveDi
 // UpdateProgress upserts the user's progress for a dialogue.
 func (s *service) UpdateProgress(ctx context.Context, userID, dialogueID uint, lineIndex int, completed bool) error {
 	return s.store.UpsertProgress(ctx, userID, dialogueID, lineIndex, completed)
+}
+
+func (s *service) RejectDialogue(ctx context.Context, id uint) error {
+	return s.store.MarkDialogueRejected(ctx, id)
 }
 
 func (s *service) GenerateDialogue(ctx context.Context, userID uint, req *GenerateRequest) (*Dialogue, error) {

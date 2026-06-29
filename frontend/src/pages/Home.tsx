@@ -36,7 +36,11 @@ export default function Home() {
       if (active) {
         setCurrentDialogue(active.dialogue)
         setPreviewLineIndex(active.current_line_index)
-        navigate('/preview')
+        if (active.current_line_index > 0) {
+          navigate('/fill-blank')
+        } else {
+          navigate('/preview')
+        }
         return
       }
     } catch {

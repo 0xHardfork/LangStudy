@@ -222,6 +222,33 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 	response.Success(c, http.StatusOK, dt)
 }
 
+func (h *Handler) RejectDialogue(c *gin.Context) {
+	userID, err := auth.CurrentUserID(c)
+	if err != nil {
+		response.Fail(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid dialogue id")
+		return
+	}
+
+	d, err := h.svc.GetDialogue(c.Request.Context(), uint(id), userID)
+	if err != nil {
+		response.Fail(c, http.StatusNotFound, "dialogue not found")
+		return
+	}
+
+	if err := h.svc.RejectDialogue(c.Request.Context(), d.ID); err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"ok": true})
+}
+
 func (h *Handler) AdminDelete(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -242,6 +269,7 @@ func (h *Handler) RegisterRoutes(authed *gin.RouterGroup, admin *gin.RouterGroup
 	authed.GET("/dialogue/shared", h.GetSharedDialogue)
 	authed.POST("/dialogue/generate", h.Generate)
 	authed.POST("/dialogue/regenerate", h.RegenerateDialogue)
+	authed.POST("/dialogue/:id/reject", h.RejectDialogue)
 	authed.PUT("/dialogue/:id/progress", h.UpdateProgress)
 	authed.GET("/dialogue/:id", h.GetDialogue)
 	authed.GET("/dialogue", h.ListDialogues)

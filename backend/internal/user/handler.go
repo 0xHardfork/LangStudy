@@ -104,6 +104,22 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	response.Success(c, http.StatusOK, nil)
 }
 
+func (h *Handler) ApproveUser(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	if err := h.svc.ApproveUser(c.Request.Context(), uint(id)); err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil)
+}
+
 func (h *Handler) ListUsers(c *gin.Context) {
 	pageStr := c.DefaultQuery("page", "1")
 	pageSizeStr := c.DefaultQuery("page_size", "20")
@@ -165,6 +181,28 @@ func (h *Handler) UpsertLearningProfile(c *gin.Context) {
 	response.Success(c, http.StatusOK, profile)
 }
 
+func (h *Handler) ChangePassword(c *gin.Context) {
+	userID, err := auth.CurrentUserID(c)
+	if err != nil {
+		response.Fail(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
+		return
+	}
+
+	if err := h.svc.ChangePassword(c.Request.Context(), userID, &req); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"ok": true})
+}
+
+
 func (h *Handler) RegisterRoutes(public *gin.RouterGroup, authed *gin.RouterGroup, admin *gin.RouterGroup) {
 	public.POST("/register", h.Register)
 	public.POST("/login", h.Login)
@@ -173,8 +211,10 @@ func (h *Handler) RegisterRoutes(public *gin.RouterGroup, authed *gin.RouterGrou
 	authed.GET("/profile", h.GetProfile)
 	authed.GET("/me/profile", h.GetLearningProfile)
 	authed.PUT("/me/profile", h.UpsertLearningProfile)
+	authed.PUT("/me/password", h.ChangePassword)
 
 	admin.GET("/users", h.ListUsers)
 	admin.POST("/users", h.CreateUser)
 	admin.DELETE("/users/:id", h.DeleteUser)
+	admin.PUT("/users/:id/approve", h.ApproveUser)
 }

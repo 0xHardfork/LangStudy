@@ -13,7 +13,7 @@ import Header from './components/layout/Header'
 import { useAuth } from './hooks/useAuth'
 import { useUserData } from './hooks/useUserData'
 import { useAppStore } from './store/useAppStore'
-import { updateDialogueProgress } from './services/api'
+import { updateDialogueProgress, rejectDialogue } from './services/api'
 
 const RequireAuth = () => {
   const user = useAppStore((state) => state.user)
@@ -89,6 +89,7 @@ function AppContent() {
                       setPreviewLineIndex(0)
                     }}
                     onSelectNewTopic={() => {
+                      rejectDialogue(token!, currentDialogue.id).catch(console.warn)
                       setCurrentDialogue(null)
                       navigate('/')
                     }}

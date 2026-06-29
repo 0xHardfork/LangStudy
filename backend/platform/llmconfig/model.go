@@ -22,3 +22,9 @@ type UpdateConfigRequest struct {
 	VocabPromptTpl   string `json:"vocab_prompt_tpl" binding:"required"`
 	GrammarPromptTpl string `json:"grammar_prompt_tpl" binding:"required"`
 }
+
+type TestConfigRequest struct {
+	ApiUrl    string `json:"api_url" binding:"required"`
+	ApiKey    string `json:"api_key" binding:"required"`
+	ModelName string `json:"model_name" binding:"required"`
+}

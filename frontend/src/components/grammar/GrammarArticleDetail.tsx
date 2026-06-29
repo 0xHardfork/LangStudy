@@ -133,8 +133,6 @@ export default function GrammarArticleDetail({
       ? activeArticle.sentences[activeSentIdx]
       : null
 
-  const currentQuiz = currentSentence?.quizzes?.[0] || null
-
   return (
     <div className="flex flex-col gap-6">
       
@@ -229,11 +227,21 @@ export default function GrammarArticleDetail({
                 </div>
               </div>
 
-              {/* Cloze multiple choice card */}
-              {currentQuiz && (
-                <GrammarQuizCard
-                  quiz={currentQuiz}
-                />
+              {/* Cloze multiple choice cards */}
+              {currentSentence.quizzes && currentSentence.quizzes.length > 0 && (
+                <div className="flex flex-col gap-4 mt-2">
+                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5 animate-fadeIn">
+                    🎯 语法测验 ({currentSentence.quizzes.length} 题)
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    {currentSentence.quizzes.map((quiz, qIdx) => (
+                      <GrammarQuizCard
+                        key={quiz.id || qIdx}
+                        quiz={quiz}
+                      />
+                    ))}
+                  </div>
+                </div>
               )}
             </>
           ) : (
