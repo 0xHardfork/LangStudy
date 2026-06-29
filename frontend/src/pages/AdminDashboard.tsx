@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Tabs, Table, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, message, Card, Spin } from 'antd'
+import { ConfigProvider, theme, Tabs, Table, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, message, Card, Spin } from 'antd'
 import {
   adminListDialogueTypes,
   adminCreateDialogueType,
@@ -391,6 +391,22 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
                 <Input.TextArea rows={6} placeholder="Template for dialogue generation..." />
               </Form.Item>
 
+              <Form.Item
+                name="vocab_prompt_tpl"
+                label="Dialogue Vocabulary Prompt Template"
+                rules={[{ required: true, message: 'Vocabulary Prompt Template is required' }]}
+              >
+                <Input.TextArea rows={6} placeholder="Template for vocabulary extraction..." />
+              </Form.Item>
+
+              <Form.Item
+                name="grammar_prompt_tpl"
+                label="Grammar Analysis & Cloze Prompt Template"
+                rules={[{ required: true, message: 'Grammar Prompt Template is required' }]}
+              >
+                <Input.TextArea rows={12} placeholder="Template for grammar analysis and cloze generation..." />
+              </Form.Item>
+
               <Form.Item className="mb-0 flex justify-end">
                 <Button type="primary" htmlType="submit" className="bg-blue-500 border-none rounded-lg px-6 cursor-pointer">
                   Save Configurations
@@ -551,40 +567,54 @@ export default function AdminDashboard({ onLogout, user }: AdminDashboardProps) 
 
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
-      <header className="border-b border-slate-900 bg-slate-900/40 backdrop-blur-md sticky top-0 z-50">
-        <div className="mx-auto max-w-5xl px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-red-500 to-amber-500 flex items-center justify-center font-bold text-white">
-              A
+    <ConfigProvider
+      theme={{
+        algorithm: theme.darkAlgorithm,
+        token: {
+          colorPrimary: '#8b5cf6',      // violet-500
+          colorBgContainer: '#0f172a',  // slate-900
+          colorBgElevated: '#1e293b',   // slate-800
+          colorBorder: '#1e293b',       // slate-800
+          colorText: '#f8fafc',         // slate-50
+          colorTextDescription: '#94a3b8', // slate-400
+        }
+      }}
+    >
+      <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
+        <header className="border-b border-slate-900 bg-slate-900/40 backdrop-blur-md sticky top-0 z-50">
+          <div className="mx-auto max-w-5xl px-4 h-16 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-red-500 to-amber-500 flex items-center justify-center font-bold text-white">
+                A
+              </div>
+              <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-amber-400">
+                Admin Portal
+              </span>
             </div>
-            <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-amber-400">
-              Admin Portal
-            </span>
-          </div>
 
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-slate-300">
-              Admin: <strong className="text-white">{user.username}</strong>
-            </span>
-            <button
-              onClick={onLogout}
-              className="rounded-lg bg-slate-900 border border-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white hover:border-slate-700 transition-colors cursor-pointer"
-            >
-              Log Out
-            </button>
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-slate-300">
+                Admin: <strong className="text-white">{user.username}</strong>
+              </span>
+              <button
+                onClick={onLogout}
+                className="rounded-lg bg-slate-900 border border-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white hover:border-slate-700 transition-colors cursor-pointer"
+              >
+                Log Out
+              </button>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-8">
-        <Tabs
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          items={items}
-          className="admin-tabs"
-        />
-      </main>
-    </div>
+        <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-8">
+          <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            items={items}
+            className="admin-tabs"
+          />
+        </main>
+      </div>
+    </ConfigProvider>
   )
 }

@@ -209,7 +209,7 @@ func (s *service) saveDialogueAndAssets(ctx context.Context, cfg *llmconfig.LLMC
 	}
 	wg.Wait()
 
-	vocabPrompt := buildVocabPrompt(llmLines)
+	vocabPrompt := buildVocabPrompt(cfg.VocabPromptTpl, llmLines)
 	vocabItems, err := s.callLLMForVocab(ctx, cfg, vocabPrompt)
 	if err != nil {
 		s.log.Warn("vocab rating failed, skipping", zap.Error(err))
@@ -284,18 +284,18 @@ func cleanJSON(s string) string {
 
 // buildDialoguePrompt constructs the first LLM prompt for a new dialogue.
 func buildDialoguePrompt(tpl string, req *GenerateRequest) string {
+	descHint := ""
+	if req.TopicDescription != "" {
+		descHint = fmt.Sprintf(" Context about this topic: %s", req.TopicDescription)
+	}
 	if tpl != "" {
 		r := strings.NewReplacer(
 			"{{language}}", req.Language,
 			"{{level}}", req.Level,
 			"{{topic}}", req.Topic,
-			"{{topic_description}}", req.TopicDescription,
+			"{{topic_description}}", descHint,
 		)
 		return r.Replace(tpl)
-	}
-	descHint := ""
-	if req.TopicDescription != "" {
-		descHint = fmt.Sprintf(" Context about this topic: %s", req.TopicDescription)
 	}
 	return fmt.Sprintf(`Generate a natural dialogue in %s at %s level about the topic "%s".%s
 The dialogue should have exactly 16 lines, alternating between speaker A (female) and speaker B (male).
@@ -321,8 +321,16 @@ func buildRegeneratePrompt(tpl string, req *GenerateRequest, hint, nativeLang st
 }
 
 // buildVocabPrompt constructs the second LLM prompt for vocabulary rating.
-func buildVocabPrompt(lines []llmDialogueLine) string {
+func buildVocabPrompt(tpl string, lines []llmDialogueLine) string {
 	linesJSON, _ := json.Marshal(lines)
+	maxLineIndex := len(lines) - 1
+	if tpl != "" {
+		r := strings.NewReplacer(
+			"{{max_line_index}}", fmt.Sprintf("%d", maxLineIndex),
+			"{{lines_json}}", string(linesJSON),
+		)
+		return r.Replace(tpl)
+	}
 	return fmt.Sprintf(`Given these dialogue lines (indexed 0 to %d):
 %s
 
@@ -331,7 +339,7 @@ Rate each word's importance from 1 (most important) to 4 (least important).
 Word index is the 0-based position of the word when the sentence is split by spaces (or by character for non-space languages).
 Return ONLY a JSON array with no other text:
 [{"line_index":0,"word":"<word>","word_index":0,"importance":1},...]`,
-		len(lines)-1, string(linesJSON))
+		maxLineIndex, string(linesJSON))
 }
 
 func (s *service) ListTopics(ctx context.Context) ([]Type, error) {

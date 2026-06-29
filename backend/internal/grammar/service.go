@@ -66,6 +66,16 @@ Guidelines:
 5. Provide 1 to 3 relevant grammatical tags.
 `
 
+func buildGrammarPrompt(tpl string, sentence string) string {
+	if tpl != "" {
+		r := strings.NewReplacer(
+			"{{sentence}}", sentence,
+		)
+		return r.Replace(tpl)
+	}
+	return fmt.Sprintf(grammarPromptTemplate, sentence)
+}
+
 func splitSentences(text string) []string {
 	normalized := strings.ReplaceAll(text, "\r\n", " ")
 	normalized = strings.ReplaceAll(normalized, "\n", " ")
@@ -172,7 +182,7 @@ func (s *svc) AnalyzeText(ctx context.Context, userID uint, req *AnalyzeRequest)
 				s.log.Warn("tts generation failed for grammar sentence", zap.String("sentence", sText), zap.Error(ttsErr))
 			}
 
-			prompt := fmt.Sprintf(grammarPromptTemplate, sText)
+			prompt := buildGrammarPrompt(cfg.GrammarPromptTpl, sText)
 			llmOutput, err := s.llmCli.Call(ctx, cfg.ApiUrl, cfg.ApiKey, cfg.ModelName, prompt)
 			if err != nil {
 				s.log.Warn("failed to call LLM for grammar analysis", zap.String("sentence", sText), zap.Error(err))
@@ -409,7 +419,7 @@ func (s *svc) RegenerateSentence(ctx context.Context, userID, sentenceID uint) (
 		}
 	}
 
-	prompt := fmt.Sprintf(grammarPromptTemplate, sent.OriginalText)
+	prompt := buildGrammarPrompt(cfg.GrammarPromptTpl, sent.OriginalText)
 	llmOutput, err := s.llmCli.Call(ctx, cfg.ApiUrl, cfg.ApiKey, cfg.ModelName, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("AI re-analysis failed: %w", err)

@@ -16,7 +16,7 @@ func New(env string) (*zap.Logger, error) {
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	}
 
-	log, err := cfg.Build()
+	log, err := cfg.Build(zap.AddStacktrace(zap.ErrorLevel))
 	if err != nil {
 		return nil, fmt.Errorf("build logger: %w", err)
 	}

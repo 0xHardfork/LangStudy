@@ -111,6 +111,39 @@ func main() {
 	llmService := llmconfig.NewService(llmStore)
 	llmHandler := llmconfig.NewHandler(llmService)
 
+	// Sync LLM config from environment variables if present (useful for local re-init)
+	envApiUrl := os.Getenv("LLM_API_URL")
+	envApiKey := os.Getenv("LLM_API_KEY")
+	envModelName := os.Getenv("LLM_MODEL_NAME")
+	if envApiUrl != "" || envApiKey != "" || envModelName != "" {
+		ctx := context.Background()
+		cfgRecord, err := llmStore.Get(ctx)
+		if err == nil {
+			updated := false
+			if envApiUrl != "" && cfgRecord.ApiUrl != envApiUrl {
+				cfgRecord.ApiUrl = envApiUrl
+				updated = true
+			}
+			if envApiKey != "" && cfgRecord.ApiKey != envApiKey {
+				cfgRecord.ApiKey = envApiKey
+				updated = true
+			}
+			if envModelName != "" && cfgRecord.ModelName != envModelName {
+				cfgRecord.ModelName = envModelName
+				updated = true
+			}
+			if updated {
+				if updateErr := llmStore.Update(ctx, cfgRecord); updateErr != nil {
+					log.Warn("failed to update LLM config from environment variables", zap.Error(updateErr))
+				} else {
+					log.Info("LLM config updated from environment variables")
+				}
+			}
+		} else {
+			log.Warn("failed to fetch LLM config for environment variables sync", zap.Error(err))
+		}
+	}
+
 	llmCli := llm.NewClient(log)
 
 	dialogueStore := dialogue.NewStore(db)
