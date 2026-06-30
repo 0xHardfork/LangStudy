@@ -150,8 +150,27 @@ export function getDialogue(token: string, id: number): Promise<Dialogue> {
   return apiCall<Dialogue>(token, `/dialogue/${id}`)
 }
 
-export function listDialogues(token: string): Promise<Dialogue[]> {
-  return apiCall<Dialogue[]>(token, '/dialogue')
+export interface ListDialoguesResult {
+  items: Dialogue[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export function listDialogues(
+  token: string,
+  page: number = 1,
+  pageSize: number = 10,
+  search?: string
+): Promise<ListDialoguesResult> {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  })
+  if (search) {
+    params.append('search', search)
+  }
+  return apiCall<ListDialoguesResult>(token, `/dialogue?${params.toString()}`)
 }
 
 // ─── Reviews ───────────────────────────────────────────────────────────────

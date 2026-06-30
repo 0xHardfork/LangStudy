@@ -168,12 +168,31 @@ func (h *Handler) ListDialogues(c *gin.Context) {
 		return
 	}
 
-	dialogues, err := h.svc.ListDialogues(c.Request.Context(), userID)
+	pageStr := c.DefaultQuery("page", "1")
+	pageSizeStr := c.DefaultQuery("page_size", "10")
+	search := c.Query("search")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize < 1 {
+		pageSize = 10
+	}
+
+	dialogues, total, err := h.svc.ListDialogues(c.Request.Context(), userID, page, pageSize, search)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	response.Success(c, http.StatusOK, dialogues)
+
+	response.Success(c, http.StatusOK, gin.H{
+		"items":     dialogues,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 func (h *Handler) ListTopics(c *gin.Context) {

@@ -21,7 +21,7 @@ type Service interface {
 	RegenerateDialogue(ctx context.Context, userID uint, req *RegenerateRequest) (*Dialogue, error)
 	UpdateProgress(ctx context.Context, userID, dialogueID uint, lineIndex int, completed bool) error
 	GetDialogue(ctx context.Context, id, userID uint) (*Dialogue, error)
-	ListDialogues(ctx context.Context, userID uint) ([]Dialogue, error)
+	ListDialogues(ctx context.Context, userID uint, page, pageSize int, search string) ([]Dialogue, int64, error)
 	RejectDialogue(ctx context.Context, id uint) error
 
 	ListTopics(ctx context.Context) ([]Type, error)
@@ -56,8 +56,8 @@ func (s *service) GetDialogue(ctx context.Context, id, userID uint) (*Dialogue, 
 	return s.store.GetDialogueByID(ctx, id, userID)
 }
 
-func (s *service) ListDialogues(ctx context.Context, userID uint) ([]Dialogue, error) {
-	return s.store.ListDialogues(ctx, userID)
+func (s *service) ListDialogues(ctx context.Context, userID uint, page, pageSize int, search string) ([]Dialogue, int64, error) {
+	return s.store.ListDialogues(ctx, userID, page, pageSize, search)
 }
 
 // GetSharedDialogue returns the canonical dialogue for a (topic, language, level) combo,

@@ -18,7 +18,7 @@ type Store interface {
 	CreateVocabulary(ctx context.Context, items []VocabularyItem) error
 	GetDialogueByID(ctx context.Context, id, userID uint) (*Dialogue, error)
 	GetDialogueByIDPublic(ctx context.Context, id uint) (*Dialogue, error)
-	ListDialogues(ctx context.Context, userID uint) ([]Dialogue, error)
+	ListDialogues(ctx context.Context, userID uint, page, pageSize int, search string) ([]Dialogue, int64, error)
 
 	// Shared dialogue
 	GetSharedDialogue(ctx context.Context, topic, language, level string) (*Dialogue, error)
@@ -121,16 +121,29 @@ func (s *gormStore) GetDialogueByIDPublic(ctx context.Context, id uint) (*Dialog
 	return &d, nil
 }
 
-// ListDialogues returns all dialogues for a user, most recent first.
-func (s *gormStore) ListDialogues(ctx context.Context, userID uint) ([]Dialogue, error) {
+// ListDialogues returns all dialogues for a user, most recent first, with paging and search.
+func (s *gormStore) ListDialogues(ctx context.Context, userID uint, page, pageSize int, search string) ([]Dialogue, int64, error) {
 	var dialogues []Dialogue
-	if err := s.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("created_at DESC").
-		Find(&dialogues).Error; err != nil {
-		return nil, fmt.Errorf("list dialogues: %w", err)
+	var total int64
+
+	db := s.db.WithContext(ctx).Model(&Dialogue{}).Where("user_id = ?", userID)
+	if search != "" {
+		db = db.Where("topic ILIKE ?", "%"+search+"%")
 	}
-	return dialogues, nil
+
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("count dialogues: %w", err)
+	}
+
+	offset := (page - 1) * pageSize
+	if err := db.Order("created_at DESC").
+		Offset(offset).
+		Limit(pageSize).
+		Find(&dialogues).Error; err != nil {
+		return nil, 0, fmt.Errorf("list dialogues: %w", err)
+	}
+
+	return dialogues, total, nil
 }
 
 // GetSharedDialogue returns the canonical dialogue for a (topic, language, level) combo.
