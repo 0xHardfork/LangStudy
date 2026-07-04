@@ -5,7 +5,6 @@ import '../../auth/cubit/auth_cubit.dart';
 import '../../auth/cubit/auth_state.dart';
 import '../../auth/models/auth_model.dart';
 import '../../study/cubit/study_cubit.dart';
-import '../../study/cubit/study_state.dart';
 import '../../../shared/utils/constants.dart';
 import 'widgets/topic_select_dialog.dart';
 import 'widgets/language_select_dialog.dart';
@@ -14,29 +13,53 @@ class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   void _handleStartLearning(BuildContext context) async {
+    debugPrint('[DEBUG] _handleStartLearning clicked');
     final studyCubit = context.read<StudyCubit>();
     final authCubit = context.read<AuthCubit>();
     final authState = authCubit.state;
-    if (authState is! AuthAuthenticated) return;
+    
+    debugPrint('[DEBUG] authState is: $authState');
+    if (authState is! AuthAuthenticated) {
+      debugPrint('[DEBUG] authState is not AuthAuthenticated, returning');
+      return;
+    }
 
     if (authState.profile == null) {
+      debugPrint('[DEBUG] authState.profile is null');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先在个人设定中配置学习语言与等级')),
       );
       return;
     }
 
+    debugPrint('[DEBUG] calling studyCubit.handleStartLearning()');
     final hasActive = await studyCubit.handleStartLearning();
+    debugPrint('[DEBUG] hasActive: $hasActive');
     if (hasActive) {
       final lineIdx = studyCubit.state.previewLineIndex;
+      debugPrint('[DEBUG] active dialogue lineIdx: $lineIdx');
       if (lineIdx > 0) {
+        debugPrint('[DEBUG] pushing /fill-blank');
         context.push('/fill-blank');
       } else {
+        debugPrint('[DEBUG] pushing /preview');
         context.push('/preview');
       }
       return;
     }
 
+    if (studyCubit.state.dialogueTypes.isEmpty) {
+      debugPrint('[DEBUG] dialogueTypes is empty, loading...');
+      await studyCubit.loadDialogueTypes();
+      debugPrint('[DEBUG] loaded dialogueTypes count: ${studyCubit.state.dialogueTypes.length}');
+    }
+
+    if (!context.mounted) {
+      debugPrint('[DEBUG] context is not mounted after loading dialogue types, returning');
+      return;
+    }
+
+    debugPrint('[DEBUG] showing topic selector');
     _showTopicSelector(context, authState.profile!);
   }
 

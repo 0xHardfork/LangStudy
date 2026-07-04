@@ -32,7 +32,6 @@ class _ReviewPageState extends State<ReviewPage> {
         : 1;
 
     final reviewCubit = context.watch<ReviewCubit>();
-    final reviewState = reviewCubit.state;
 
     return Scaffold(
       appBar: AppBar(

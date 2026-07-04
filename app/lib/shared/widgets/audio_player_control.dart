@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../../core/config/app_config.dart';
@@ -12,26 +13,31 @@ class AudioPlayerControl extends StatefulWidget {
 }
 
 class _AudioPlayerControlState extends State<AudioPlayerControl> {
-  late final AudioPlayer _audioPlayer;
+  AudioPlayer? _audioPlayer;
   PlayerState _playerState = PlayerState.stopped;
+  StreamSubscription? _stateSubscription;
 
   @override
   void initState() {
     super.initState();
-    _audioPlayer = AudioPlayer();
-    _audioPlayer.onPlayerStateChanged.listen((state) {
-      if (mounted) {
-        setState(() {
-          _playerState = state;
-        });
-      }
-    });
   }
 
   @override
   void dispose() {
-    _audioPlayer.dispose();
+    _cleanupPlayer(fromDispose: true);
     super.dispose();
+  }
+
+  void _cleanupPlayer({bool fromDispose = false}) {
+    _stateSubscription?.cancel();
+    _stateSubscription = null;
+    _audioPlayer?.dispose();
+    _audioPlayer = null;
+    if (!fromDispose && mounted) {
+      setState(() {
+        _playerState = PlayerState.stopped;
+      });
+    }
   }
 
   Future<void> _play() async {
@@ -44,14 +50,29 @@ class _AudioPlayerControlState extends State<AudioPlayerControl> {
     final fullUrl = path.startsWith('http') ? path : '$baseUrl/$cleanPath';
 
     try {
+      if (_audioPlayer == null) {
+        final player = AudioPlayer();
+        _audioPlayer = player;
+        _stateSubscription = player.onPlayerStateChanged.listen((state) {
+          if (mounted) {
+            setState(() {
+              _playerState = state;
+            });
+          }
+          if (state == PlayerState.completed) {
+            _cleanupPlayer();
+          }
+        });
+      }
+
       if (_playerState == PlayerState.playing) {
-        await _audioPlayer.pause();
+        await _audioPlayer?.pause();
       } else {
-        await _audioPlayer.stop();
-        await _audioPlayer.play(UrlSource(fullUrl));
+        await _audioPlayer?.stop();
+        await _audioPlayer?.play(UrlSource(fullUrl));
       }
     } catch (_) {
-      // Audio playback failed
+      _cleanupPlayer();
     }
   }
 

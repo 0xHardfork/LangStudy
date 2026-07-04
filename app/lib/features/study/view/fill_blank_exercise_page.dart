@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/service_locator.dart';
 import '../../dialogue/models/dialogue_model.dart';
 import '../../study/cubit/study_cubit.dart';
-import '../../study/cubit/study_state.dart';
 import '../../review/data/repository/review_repository.dart';
 import '../../../shared/widgets/audio_player_control.dart';
 import 'dialogue_full_text_page.dart';
@@ -24,7 +23,7 @@ class _FillBlankExercisePageState extends State<FillBlankExercisePage> {
   int _wrongCount = 0;
   bool _submitting = false;
   bool _showTranslation = false;
-  bool _showFullTextModal = false;
+  int? _dialogueId;
 
   // Controllers and FocusNodes
   final Map<int, TextEditingController> _controllers = {};
@@ -34,10 +33,13 @@ class _FillBlankExercisePageState extends State<FillBlankExercisePage> {
   @override
   void initState() {
     super.initState();
+    print('[DEBUG] FillBlankExercisePage initState called');
     final studyState = context.read<StudyCubit>().state;
     final dialogue = studyState.currentDialogue;
+    print('[DEBUG] FillBlankExercisePage dialogue: ${dialogue != null ? "id=${dialogue.id}" : "null"}');
     _currentIndex = studyState.previewLineIndex;
     if (dialogue != null) {
+      _dialogueId = dialogue.id;
       if (_currentIndex < 0 || _currentIndex >= dialogue.lines.length) {
         _currentIndex = 0;
       }
@@ -225,14 +227,38 @@ class _FillBlankExercisePageState extends State<FillBlankExercisePage> {
 
   @override
   Widget build(BuildContext context) {
+    print('[DEBUG] FillBlankExercisePage build called');
     final studyCubit = context.watch<StudyCubit>();
     final studyState = studyCubit.state;
     final dialogue = studyState.currentDialogue;
+    print('[DEBUG] FillBlankExercisePage dialogue: ${dialogue != null ? "id=${dialogue.id}" : "null"}');
 
     if (dialogue == null) {
       return const Scaffold(
         body: Center(child: Text('无可用对话')),
       );
+    }
+
+    if (dialogue.lines.isEmpty) {
+      return const Scaffold(
+        body: Center(child: Text('对话内容为空')),
+      );
+    }
+
+    // Detect if dialogue has changed (e.g. from learning history) or index is out of bounds
+    if (_dialogueId != dialogue.id) {
+      _dialogueId = dialogue.id;
+      _currentIndex = studyState.previewLineIndex;
+      if (_currentIndex < 0 || _currentIndex >= dialogue.lines.length) {
+        _currentIndex = 0;
+      }
+      _inputs.clear();
+      _submitted = false;
+      _isCorrect = false;
+      _initCurrentLineControllers();
+    } else if (_currentIndex < 0 || _currentIndex >= dialogue.lines.length) {
+      _currentIndex = 0;
+      _initCurrentLineControllers();
     }
 
     final line = dialogue.lines[_currentIndex];

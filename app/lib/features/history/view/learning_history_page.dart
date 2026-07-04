@@ -6,7 +6,6 @@ import '../../../core/di/service_locator.dart';
 import '../../dialogue/data/repository/dialogue_repository.dart';
 import '../../dialogue/models/dialogue_model.dart';
 import '../../study/cubit/study_cubit.dart';
-import '../../study/cubit/study_state.dart';
 import '../../../shared/utils/constants.dart';
 
 class LearningHistoryPage extends StatefulWidget {
@@ -77,15 +76,33 @@ class _LearningHistoryPageState extends State<LearningHistoryPage> {
     _loadHistory();
   }
 
-  void _relearn(Dialogue dialogue) {
-    final studyCubit = context.read<StudyCubit>();
-    studyCubit.resetDialogue();
-    // Inject the selected dialogue to the state
-    studyCubit.emit(studyCubit.state.copyWith(
-      currentDialogue: () => dialogue,
-      previewLineIndex: 0,
-    ));
-    context.push('/fill-blank');
+  void _relearn(Dialogue dialogue) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: CircularProgressIndicator(color: Colors.deepPurpleAccent),
+      ),
+    );
+
+    try {
+      final repo = getIt<DialogueRepository>();
+      final fullDialogue = await repo.getDialogue(dialogue.id);
+
+      if (!context.mounted) return;
+      Navigator.of(context).pop(); // Dismiss loading
+
+      final studyCubit = context.read<StudyCubit>();
+      studyCubit.setDialogue(fullDialogue);
+      context.push('/fill-blank');
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Dismiss loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载对话详情失败: $e')),
+        );
+      }
+    }
   }
 
   @override

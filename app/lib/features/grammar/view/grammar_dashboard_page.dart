@@ -55,7 +55,6 @@ class _GrammarDashboardPageState extends State<GrammarDashboardPage> {
   @override
   Widget build(BuildContext context) {
     final grammarCubit = context.watch<GrammarCubit>();
-    final state = grammarCubit.state;
 
     return Scaffold(
       appBar: AppBar(

@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../auth/cubit/auth_cubit.dart';
 import '../../auth/cubit/auth_state.dart';
 import '../../study/cubit/study_cubit.dart';
-import '../../study/cubit/study_state.dart';
 import '../../../shared/widgets/audio_player_control.dart';
 import '../../../shared/utils/constants.dart';
 
@@ -17,6 +16,12 @@ class DialoguePreviewPage extends StatefulWidget {
 
 class _DialoguePreviewPageState extends State<DialoguePreviewPage> {
   final _hintController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    print('[DEBUG] DialoguePreviewPage initState called');
+  }
 
   @override
   void dispose() {
@@ -77,9 +82,11 @@ class _DialoguePreviewPageState extends State<DialoguePreviewPage> {
 
   @override
   Widget build(BuildContext context) {
+    print('[DEBUG] DialoguePreviewPage build called');
     final studyCubit = context.watch<StudyCubit>();
     final studyState = studyCubit.state;
     final dialogue = studyState.currentDialogue;
+    print('[DEBUG] DialoguePreviewPage dialogue: ${dialogue != null ? "id=${dialogue.id}" : "null"}');
 
     if (dialogue == null) {
       return const Scaffold(

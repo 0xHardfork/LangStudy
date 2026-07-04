@@ -22,6 +22,7 @@ class _DialogueFullTextPageState extends State<DialogueFullTextPage> {
   bool _showTranslation = true;
   PlayerState _playerState = PlayerState.stopped;
   bool _isSwitchingSource = false;
+  double _playbackSpeed = 1.0;
 
   @override
   void initState() {
@@ -73,6 +74,7 @@ class _DialogueFullTextPageState extends State<DialogueFullTextPage> {
     try {
       await _audioPlayer.stop();
       await _audioPlayer.play(UrlSource(fullUrl));
+      await _audioPlayer.setPlaybackRate(_playbackSpeed);
       if (mounted) {
         setState(() {
           _isSwitchingSource = false;
@@ -94,6 +96,7 @@ class _DialogueFullTextPageState extends State<DialogueFullTextPage> {
         await _audioPlayer.pause();
       } else {
         await _audioPlayer.resume();
+        await _audioPlayer.setPlaybackRate(_playbackSpeed);
       }
     } else {
       await _playLine(index);
@@ -235,6 +238,41 @@ class _DialogueFullTextPageState extends State<DialogueFullTextPage> {
                             });
                           },
                           tooltip: '全文循环',
+                        ),
+                        const SizedBox(width: 8),
+                        PopupMenuButton<double>(
+                          icon: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: _playbackSpeed == 1.0 ? Colors.grey : Colors.blueAccent),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${_playbackSpeed}x',
+                              style: TextStyle(
+                                fontSize: 12, 
+                                fontWeight: FontWeight.bold,
+                                color: _playbackSpeed == 1.0 ? Colors.grey : Colors.blueAccent,
+                              ),
+                            ),
+                          ),
+                          tooltip: '播放速度',
+                          onSelected: (double speed) async {
+                            setState(() {
+                              _playbackSpeed = speed;
+                            });
+                            if (_playerState == PlayerState.playing) {
+                              await _audioPlayer.setPlaybackRate(speed);
+                            }
+                          },
+                          itemBuilder: (BuildContext context) => <PopupMenuEntry<double>>[
+                            const PopupMenuItem<double>(value: 0.5, child: Text('0.5x 极慢')),
+                            const PopupMenuItem<double>(value: 0.8, child: Text('0.8x 较慢')),
+                            const PopupMenuItem<double>(value: 1.0, child: Text('1.0x 正常')),
+                            const PopupMenuItem<double>(value: 1.2, child: Text('1.2x 稍快')),
+                            const PopupMenuItem<double>(value: 1.5, child: Text('1.5x 较快')),
+                            const PopupMenuItem<double>(value: 2.0, child: Text('2.0x 极快')),
+                          ],
                         ),
                       ],
                     ),
