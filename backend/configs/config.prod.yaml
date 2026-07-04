@@ -1,0 +1,40 @@
+app:
+  name: langstudy
+  port: 8080
+  env: production
+  static_dir: "/data/langstudy/audio"
+
+jwt:
+  secret: "replace-this-with-a-secure-random-32-character-secret"
+  expire_hours: 24
+  access_token_expire_minutes: 30
+  refresh_expire_hours_web: 24
+  refresh_expire_hours_app: 4320
+
+postgres:
+  host: 127.0.0.1
+  port: 5432
+  user: postgres
+  # Option 1: Load password securely from a local high-permission file (Recommended)
+  password_file: "/etc/langstudy/secrets/pg_pass"
+  # Option 2: Plaintext password (Not recommended, keep blank if using password_file or environment variables)
+  password: ""
+  dbname: langstudy
+  sslmode: disable
+
+redis:
+  host: 127.0.0.1
+  port: 6379
+  # Load redis password securely from a local file
+  password_file: "/etc/langstudy/secrets/redis_pass"
+  password: ""
+  db: 0
+
+log:
+  level: info
+  output_paths:
+    - stdout
+    - /data/langstudy/log/server.log
+
+llm:
+  timeout_seconds: 120

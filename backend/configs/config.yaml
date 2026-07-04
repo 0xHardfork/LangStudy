@@ -1,0 +1,36 @@
+app:
+  name: langstudy
+  port: 8080
+  env: development
+  static_dir: "static"
+
+jwt:
+  secret: "change-this-secret-in-production-min-32-chars"
+  expire_hours: 24
+  access_token_expire_minutes: 30
+  refresh_expire_hours_web: 24
+  refresh_expire_hours_app: 4320
+
+postgres:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: postgres
+  # password_file: "/path/to/pg_pass" # Option to load password from local file
+  dbname: langstudy
+  sslmode: disable
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  # password_file: "/path/to/redis_pass"
+  db: 0
+
+log:
+  level: debug
+  output_paths:
+    - stdout
+
+llm:
+  timeout_seconds: 120

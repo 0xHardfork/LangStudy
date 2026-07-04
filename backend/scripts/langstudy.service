@@ -1,0 +1,39 @@
+[Unit]
+Description=LangStudy Backend API Service
+After=network.target postgresql.service redis-server.service
+
+[Service]
+Type=simple
+# Ensure you create a dedicated system user or change to your deployment user (e.g. www-data or root)
+User=langstudy
+Group=langstudy
+
+# Configure to the absolute path of your deployment directory
+WorkingDirectory=/opt/langstudy/backend
+
+# Environment variables (Optional: you can also configure database and redis connection here)
+Environment=APP_ENV=production
+# Load environments from a secure, root-only file (Recommended for credentials)
+EnvironmentFile=-/etc/langstudy/env
+# Environment=POSTGRES_PASSWORD=your_prod_db_password
+
+# Run migration check before starting the API server
+ExecStartPre=/opt/langstudy/backend/bin/migrate
+
+# Start the main API server
+ExecStart=/opt/langstudy/backend/bin/server
+
+# Automatic crash recovery
+Restart=always
+RestartSec=5s
+
+# Logging configuration
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=langstudy
+
+# Open file descriptor limits
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

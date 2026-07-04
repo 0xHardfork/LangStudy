@@ -1,0 +1,5 @@
+.env
+bin/
+*.log
+server
+server-dev

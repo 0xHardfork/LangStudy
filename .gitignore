@@ -1,0 +1,72 @@
+# General
+.DS_Store
+**/.DS_Store
+*.log
+*.swp
+*.class
+*.history
+.history/
+__pycache__/
+*.pyc
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# Python
+.venv/
+
+# Backend
+backend/bin/
+backend/.env
+backend/static/
+
+# Frontend (Web React)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# Flutter App specific
+app/.dart_tool/
+app/.flutter-plugins-dependencies
+app/.flutter-plugins
+app/.pub-cache/
+app/.pub/
+app/build/
+app/coverage/
+app/app.*.symbols
+app/app.*.map.json
+
+# App Android local files
+app/android/local.properties
+app/android/.gradle/
+app/android/app/debug/
+app/android/app/profile/
+app/android/app/release/
+app/*.keystore
+app/*.jks
+
+# App iOS local configuration and Cocoapods
+app/ios/Flutter/Generated.xcconfig
+app/ios/Flutter/flutter_export_environment.sh
+app/ios/Flutter/ephemeral/
+app/ios/Flutter/App.framework
+app/ios/Flutter/Flutter.framework
+app/ios/Flutter/Flutter.podspec
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Runner/GeneratedFiles/
+app/DerivedData/
+app/xcuserdata/
+app/*.pbxuser
+app/*.mode1v3
+app/*.mode2v3
+app/*.perspectivev3
+
+# Local deploy credentials configuration
+/backend/scripts/.env.deploy
+
