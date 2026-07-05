@@ -116,83 +116,85 @@ class _DialoguePreviewPageState extends State<DialoguePreviewPage> {
             children: [
               // Chat List
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                  itemCount: dialogue.lines.length,
-                  itemBuilder: (context, index) {
-                    final line = dialogue.lines[index];
-                    final isSpeakerA = line.speaker == 'A';
+                child: SelectionArea(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                    itemCount: dialogue.lines.length,
+                    itemBuilder: (context, index) {
+                      final line = dialogue.lines[index];
+                      final isSpeakerA = line.speaker == 'A';
 
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 20.0),
-                      child: Row(
-                        mainAxisAlignment: isSpeakerA ? MainAxisAlignment.start : MainAxisAlignment.end,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (isSpeakerA) ...[
-                            _buildAvatar(isSpeakerA),
-                            const SizedBox(width: 10),
-                          ],
-                          Flexible(
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: isSpeakerA
-                                    ? const Color(0xFF1E3A8A).withOpacity(0.2) // Blue tint for Speaker A
-                                    : const Color(0xFF581C87).withOpacity(0.2), // Purple tint for Speaker B
-                                border: Border.all(
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 20.0),
+                        child: Row(
+                          mainAxisAlignment: isSpeakerA ? MainAxisAlignment.start : MainAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (isSpeakerA) ...[
+                              _buildAvatar(isSpeakerA),
+                              const SizedBox(width: 10),
+                            ],
+                            Flexible(
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
                                   color: isSpeakerA
-                                      ? Colors.blue.withOpacity(0.2)
-                                      : Colors.purple.withOpacity(0.2),
+                                      ? const Color(0xFF1E3A8A).withOpacity(0.2) // Blue tint for Speaker A
+                                      : const Color(0xFF581C87).withOpacity(0.2), // Purple tint for Speaker B
+                                  border: Border.all(
+                                    color: isSpeakerA
+                                        ? Colors.blue.withOpacity(0.2)
+                                        : Colors.purple.withOpacity(0.2),
+                                  ),
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(16),
+                                    topRight: const Radius.circular(16),
+                                    bottomLeft: isSpeakerA ? Radius.zero : const Radius.circular(16),
+                                    bottomRight: isSpeakerA ? const Radius.circular(16) : Radius.zero,
+                                  ),
                                 ),
-                                borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(16),
-                                  topRight: const Radius.circular(16),
-                                  bottomLeft: isSpeakerA ? Radius.zero : const Radius.circular(16),
-                                  bottomRight: isSpeakerA ? const Radius.circular(16) : Radius.zero,
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        isSpeakerA ? 'Speaker A' : 'Speaker B',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: isSpeakerA ? Colors.blueAccent : Colors.purpleAccent,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          isSpeakerA ? 'Speaker A' : 'Speaker B',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: isSpeakerA ? Colors.blueAccent : Colors.purpleAccent,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      AudioPlayerControl(audioPath: line.audioPath),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    line.originalText,
-                                    style: const TextStyle(fontSize: 18, color: Colors.white, height: 1.4),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    line.translation,
-                                    style: TextStyle(fontSize: 14, color: Colors.grey[400], height: 1.4),
-                                  ),
-                                ],
+                                        const SizedBox(width: 12),
+                                        AudioPlayerControl(audioPath: line.audioPath),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      line.originalText,
+                                      style: const TextStyle(fontSize: 18, color: Colors.white, height: 1.4),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      line.translation,
+                                      style: TextStyle(fontSize: 14, color: Colors.grey[400], height: 1.4),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          if (!isSpeakerA) ...[
-                            const SizedBox(width: 10),
-                            _buildAvatar(isSpeakerA),
+                            if (!isSpeakerA) ...[
+                              const SizedBox(width: 10),
+                              _buildAvatar(isSpeakerA),
+                            ],
                           ],
-                        ],
-                      ),
-                    );
-                  },
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
 

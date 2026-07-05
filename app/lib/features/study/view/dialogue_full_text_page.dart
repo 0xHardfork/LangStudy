@@ -284,88 +284,90 @@ class _DialogueFullTextPageState extends State<DialogueFullTextPage> {
 
           // Conversation ListView
           Expanded(
-            child: ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              padding: const EdgeInsets.all(16.0),
-              itemCount: totalLines,
-              itemBuilder: (context, index) {
-                final line = widget.dialogue.lines[index];
-                final isSpeakerA = line.speaker == 'A';
-                final isCurrentLine = _playingIndex == index;
-                final isLinePlaying = isCurrentLine && _playerState == PlayerState.playing;
+            child: SelectionArea(
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: const EdgeInsets.all(16.0),
+                itemCount: totalLines,
+                itemBuilder: (context, index) {
+                  final line = widget.dialogue.lines[index];
+                  final isSpeakerA = line.speaker == 'A';
+                  final isCurrentLine = _playingIndex == index;
+                  final isLinePlaying = isCurrentLine && _playerState == PlayerState.playing;
 
-                return Container(
-                  key: _bubbleKeys[index],
-                  margin: const EdgeInsets.only(bottom: 16.0),
-                  padding: const EdgeInsets.all(12.0),
-                  decoration: BoxDecoration(
-                    color: isCurrentLine
-                        ? (isSpeakerA ? Colors.blue[950]?.withOpacity(0.4) : Colors.purple[950]?.withOpacity(0.4))
-                        : const Color(0xFF0F172A), // slate-900
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
+                  return Container(
+                    key: _bubbleKeys[index],
+                    margin: const EdgeInsets.only(bottom: 16.0),
+                    padding: const EdgeInsets.all(12.0),
+                    decoration: BoxDecoration(
                       color: isCurrentLine
-                          ? (isSpeakerA ? Colors.blueAccent : Colors.purpleAccent)
-                          : const Color(0xFF1E293B),
-                      width: isCurrentLine ? 2.0 : 1.0,
+                          ? (isSpeakerA ? Colors.blue[950]?.withOpacity(0.4) : Colors.purple[950]?.withOpacity(0.4))
+                          : const Color(0xFF0F172A), // slate-900
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isCurrentLine
+                            ? (isSpeakerA ? Colors.blueAccent : Colors.purpleAccent)
+                            : const Color(0xFF1E293B),
+                        width: isCurrentLine ? 2.0 : 1.0,
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Speaker Avatar
-                      CircleAvatar(
-                        backgroundColor: isSpeakerA ? Colors.blue[900] : Colors.purple[900],
-                        radius: 18,
-                        child: Text(
-                          line.speaker,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Speaker Avatar
+                        CircleAvatar(
+                          backgroundColor: isSpeakerA ? Colors.blue[900] : Colors.purple[900],
+                          radius: 18,
+                          child: Text(
+                            line.speaker,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
+                        const SizedBox(width: 12),
 
-                      // Text Content Bubble
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              line.originalText,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: isCurrentLine ? Colors.white : const Color(0xFFE2E8F0),
-                                fontWeight: isCurrentLine ? FontWeight.w600 : FontWeight.normal,
-                              ),
-                            ),
-                            if (_showTranslation) ...[
-                              const SizedBox(height: 6),
+                        // Text Content Bubble
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                line.translation,
-                                style: const TextStyle(fontSize: 13, color: Colors.grey),
+                                line.originalText,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: isCurrentLine ? Colors.white : const Color(0xFFE2E8F0),
+                                  fontWeight: isCurrentLine ? FontWeight.w600 : FontWeight.normal,
+                                ),
                               ),
+                              if (_showTranslation) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  line.translation,
+                                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
+                        const SizedBox(width: 8),
 
-                      // Play/Pause Action next to the bubble
-                      IconButton(
-                        icon: Icon(
-                          isLinePlaying ? Icons.pause_circle : Icons.play_circle,
-                          color: isCurrentLine
-                              ? (isSpeakerA ? Colors.blueAccent : Colors.purpleAccent)
-                              : Colors.grey,
-                          size: 28,
+                        // Play/Pause Action next to the bubble
+                        IconButton(
+                          icon: Icon(
+                            isLinePlaying ? Icons.pause_circle : Icons.play_circle,
+                            color: isCurrentLine
+                                ? (isSpeakerA ? Colors.blueAccent : Colors.purpleAccent)
+                                : Colors.grey,
+                            size: 28,
+                          ),
+                          onPressed: () => _togglePlayLine(index),
                         ),
-                        onPressed: () => _togglePlayLine(index),
-                      ),
-                    ],
-                  ),
-                );
-              },
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],

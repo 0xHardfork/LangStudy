@@ -238,135 +238,137 @@ class _DialogueReviewPanelState extends State<DialogueReviewPanel> {
             border: Border.all(color: Colors.purple.withOpacity(0.15)),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '复习 轮次 #${item.reviewCount + 1}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.purpleAccent),
-                  ),
-                  AudioPlayerControl(audioPath: item.audioPath),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '💬 ${item.translation}',
-                style: const TextStyle(fontSize: 16, color: Colors.white, height: 1.4),
-              ),
-              const SizedBox(height: 8),
-              if (item.audioPath != null)
-                const Text(
-                  '💡 提示：可以先点 🔊 听读音再填写',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+          child: SelectionArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '复习 轮次 #${item.reviewCount + 1}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.purpleAccent),
+                    ),
+                    AudioPlayerControl(audioPath: item.audioPath),
+                  ],
                 ),
-              const SizedBox(height: 24),
-
-              // Blanks wrapping
-              Wrap(
-                spacing: 8.0,
-                runSpacing: 12.0,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: tokens.asMap().entries.map((entry) {
-                  final idx = entry.key;
-                  final tok = entry.value;
-                  final parts = _splitToken(tok);
-                  final prefix = parts['prefix']!;
-                  final clean = parts['clean']!;
-                  final suffix = parts['suffix']!;
-
-                  if (blankIndices.contains(idx)) {
-                    final controller = _controllers[idx];
-                    final focusNode = _focusNodes[idx];
-                    final given = _inputs[idx] ?? '';
-                    final isFieldCorrect = given.trim().toLowerCase() == clean.toLowerCase();
-
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (prefix.isNotEmpty)
-                          Text(prefix, style: const TextStyle(fontSize: 20, color: Colors.white)),
-                        SizedBox(
-                          width: (clean.length * 13.0 + 36.0).clamp(55.0, 180.0),
-                          child: TextField(
-                            controller: controller,
-                            focusNode: focusNode,
-                            enabled: !_submitted,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
-                            decoration: InputDecoration(
-                              contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                              isDense: true,
-                              filled: true,
-                              fillColor: _submitted
-                                  ? (isFieldCorrect ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15))
-                                  : Colors.purple.withOpacity(0.08),
-                              enabledBorder: OutlineInputBorder(
-                                borderSide: BorderSide(color: Colors.purpleAccent.withOpacity(0.4), style: BorderStyle.solid),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              disabledBorder: OutlineInputBorder(
-                                borderSide: BorderSide(color: isFieldCorrect ? Colors.green : Colors.red, width: 2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              hintText: '___',
-                              hintStyle: TextStyle(color: Colors.grey[750]),
-                            ),
-                            textInputAction: TextInputAction.next,
-                            onSubmitted: (_) {
-                              final sorted = blankIndices.toList()..sort();
-                              final unfilled = sorted.where((i) {
-                                if (i == idx) return _controllers[i]!.text.trim().isEmpty;
-                                return (_inputs[i] ?? '').trim().isEmpty;
-                              }).toList();
-
-                              if (unfilled.isNotEmpty) {
-                                _focusNodes[unfilled[0]]?.requestFocus();
-                              } else {
-                                _nextFocusNode.requestFocus();
-                              }
-                            },
-                          ),
-                        ),
-                        if (suffix.isNotEmpty)
-                          Text(suffix, style: const TextStyle(fontSize: 20, color: Colors.white)),
-                      ],
-                    );
-                  }
-
-                  return Text(tok, style: const TextStyle(fontSize: 20, color: Colors.white));
-                }).toList(),
-              ),
-
-              // Feedback
-              if (_submitted) ...[
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: _isCorrect ? Colors.green.withOpacity(0.08) : Colors.red.withOpacity(0.08),
-                    border: Border.all(color: _isCorrect ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2)),
-                    borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 16),
+                Text(
+                  '💬 ${item.translation}',
+                  style: const TextStyle(fontSize: 16, color: Colors.white, height: 1.4),
+                ),
+                const SizedBox(height: 8),
+                if (item.audioPath != null)
+                  const Text(
+                    '💡 提示：可以先点 🔊 听读音再填写',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
-                  child: Text(
-                    _isCorrect ? '✅ 答对了！' : '❌ 答错了，正确句子是：\n${item.originalText}',
-                    style: TextStyle(
-                      color: _isCorrect ? Colors.greenAccent : Colors.redAccent,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      height: 1.4,
+                const SizedBox(height: 24),
+
+                // Blanks wrapping
+                Wrap(
+                  spacing: 8.0,
+                  runSpacing: 12.0,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: tokens.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final tok = entry.value;
+                    final parts = _splitToken(tok);
+                    final prefix = parts['prefix']!;
+                    final clean = parts['clean']!;
+                    final suffix = parts['suffix']!;
+
+                    if (blankIndices.contains(idx)) {
+                      final controller = _controllers[idx];
+                      final focusNode = _focusNodes[idx];
+                      final given = _inputs[idx] ?? '';
+                      final isFieldCorrect = given.trim().toLowerCase() == clean.toLowerCase();
+
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (prefix.isNotEmpty)
+                            Text(prefix, style: const TextStyle(fontSize: 20, color: Colors.white)),
+                          SizedBox(
+                            width: (clean.length * 13.0 + 36.0).clamp(55.0, 180.0),
+                            child: TextField(
+                              controller: controller,
+                              focusNode: focusNode,
+                              enabled: !_submitted,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+                              decoration: InputDecoration(
+                                contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                                isDense: true,
+                                filled: true,
+                                fillColor: _submitted
+                                    ? (isFieldCorrect ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15))
+                                    : Colors.purple.withOpacity(0.08),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(color: Colors.purpleAccent.withOpacity(0.4), style: BorderStyle.solid),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                disabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(color: isFieldCorrect ? Colors.green : Colors.red, width: 2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                hintText: '___',
+                                hintStyle: TextStyle(color: Colors.grey[750]),
+                              ),
+                              textInputAction: TextInputAction.next,
+                              onSubmitted: (_) {
+                                final sorted = blankIndices.toList()..sort();
+                                final unfilled = sorted.where((i) {
+                                  if (i == idx) return _controllers[i]!.text.trim().isEmpty;
+                                  return (_inputs[i] ?? '').trim().isEmpty;
+                                }).toList();
+
+                                if (unfilled.isNotEmpty) {
+                                  _focusNodes[unfilled[0]]?.requestFocus();
+                                } else {
+                                  _nextFocusNode.requestFocus();
+                                }
+                              },
+                            ),
+                          ),
+                          if (suffix.isNotEmpty)
+                            Text(suffix, style: const TextStyle(fontSize: 20, color: Colors.white)),
+                        ],
+                      );
+                    }
+
+                    return Text(tok, style: const TextStyle(fontSize: 20, color: Colors.white));
+                  }).toList(),
+                ),
+
+                // Feedback
+                if (_submitted) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: _isCorrect ? Colors.green.withOpacity(0.08) : Colors.red.withOpacity(0.08),
+                      border: Border.all(color: _isCorrect ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _isCorrect ? '✅ 答对了！' : '❌ 答错了，正确句子是：\n${item.originalText}',
+                      style: TextStyle(
+                        color: _isCorrect ? Colors.greenAccent : Colors.redAccent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
         const SizedBox(height: 20),

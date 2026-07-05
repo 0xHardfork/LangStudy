@@ -349,159 +349,161 @@ class _FillBlankExercisePageState extends State<FillBlankExercisePage> {
                         ),
                         borderRadius: BorderRadius.circular(24),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Speaker Label & Audio
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
+                      child: SelectionArea(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Speaker Label & Audio
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  isSpeakerA ? '👩 Speaker A' : '👨 Speaker B',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: isSpeakerA ? Colors.blueAccent : Colors.purpleAccent,
+                                  ),
+                                ),
+                                AudioPlayerControl(audioPath: line.audioPath),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Translation hide/show
+                            if (_showTranslation) ...[
                               Text(
-                                isSpeakerA ? '👩 Speaker A' : '👨 Speaker B',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: isSpeakerA ? Colors.blueAccent : Colors.purpleAccent,
+                                line.translation,
+                                style: const TextStyle(fontSize: 16, color: Colors.grey, fontStyle: FontStyle.italic),
+                              ),
+                              const SizedBox(height: 6),
+                              GestureDetector(
+                                onTap: () => setState(() => _showTranslation = false),
+                                child: const Text('隐藏译文', style: TextStyle(color: Colors.grey, fontSize: 13, decoration: TextDecoration.underline)),
+                              ),
+                            ] else ...[
+                              OutlinedButton.icon(
+                                onPressed: () => setState(() => _showTranslation = true),
+                                icon: const Icon(Icons.visibility, size: 14),
+                                label: const Text('显示中文释义', style: TextStyle(fontSize: 13)),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  side: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                                  foregroundColor: Colors.grey,
                                 ),
                               ),
-                              AudioPlayerControl(audioPath: line.audioPath),
                             ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Translation hide/show
-                          if (_showTranslation) ...[
-                            Text(
-                              line.translation,
-                              style: const TextStyle(fontSize: 16, color: Colors.grey, fontStyle: FontStyle.italic),
-                            ),
-                            const SizedBox(height: 6),
-                            GestureDetector(
-                              onTap: () => setState(() => _showTranslation = false),
-                              child: const Text('隐藏译文', style: TextStyle(color: Colors.grey, fontSize: 13, decoration: TextDecoration.underline)),
-                            ),
-                          ] else ...[
-                            OutlinedButton.icon(
-                              onPressed: () => setState(() => _showTranslation = true),
-                              icon: const Icon(Icons.visibility, size: 14),
-                              label: const Text('显示中文释义', style: TextStyle(fontSize: 13)),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                side: BorderSide(color: Colors.grey.withOpacity(0.3)),
-                                foregroundColor: Colors.grey,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 24),
-
-                          // Token Wrap list
-                          Wrap(
-                            spacing: 8.0,
-                            runSpacing: 12.0,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: tokens.asMap().entries.map((entry) {
-                              final idx = entry.key;
-                              final tok = entry.value;
-                              final parts = _splitToken(tok);
-                              final prefix = parts['prefix']!;
-                              final clean = parts['clean']!;
-                              final suffix = parts['suffix']!;
-
-                              if (blankIndices.contains(idx)) {
-                                final controller = _controllers[idx];
-                                final focusNode = _focusNodes[idx];
-                                final given = _inputs[idx] ?? '';
-                                final isFieldCorrect = given.trim().toLowerCase() == clean.toLowerCase();
-
-                                return Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (prefix.isNotEmpty)
-                                      Text(prefix, style: const TextStyle(fontSize: 22, color: Colors.white)),
-                                    SizedBox(
-                                      width: (clean.length * 14.0 + 36.0).clamp(60.0, 200.0),
-                                      child: TextField(
-                                        controller: controller,
-                                        focusNode: focusNode,
-                                                                                enabled: !_submitted,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold),
-                                        decoration: InputDecoration(
-                                          contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                          isDense: true,
-                                          filled: true,
-                                          fillColor: _submitted
-                                              ? (isFieldCorrect ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15))
-                                              : Colors.deepPurple.withOpacity(0.08),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderSide: BorderSide(color: Colors.deepPurpleAccent.withOpacity(0.5), style: BorderStyle.solid),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          disabledBorder: OutlineInputBorder(
-                                            borderSide: BorderSide(
-                                              color: isFieldCorrect ? Colors.green : Colors.red,
-                                              width: 2,
-                                            ),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          hintText: '___',
-                                          hintStyle: TextStyle(color: Colors.grey[700]),
-                                        ),
-                                        textInputAction: TextInputAction.next,
-                                        onSubmitted: (_) {
-                                          final sorted = blankIndices.toList()..sort();
-                                          final unfilled = sorted.where((i) {
-                                            if (i == idx) {
-                                              return _controllers[i]!.text.trim().isEmpty;
-                                            }
-                                            return (_inputs[i] ?? '').trim().isEmpty;
-                                          }).toList();
-
-                                          if (unfilled.isNotEmpty) {
-                                            _focusNodes[unfilled[0]]?.requestFocus();
-                                          } else {
-                                            _submitFocusNode.requestFocus();
-                                          }
-                                        },
-                                      ),
-                                    ),
-                                    if (suffix.isNotEmpty)
-                                      Text(suffix, style: const TextStyle(fontSize: 22, color: Colors.white)),
-                                  ],
-                                );
-                              }
-
-                              return Text(tok, style: const TextStyle(fontSize: 22, color: Colors.white));
-                            }).toList(),
-                          ),
-
-                          // Correct/incorrect feedback
-                          if (_submitted) ...[
                             const SizedBox(height: 24),
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: _isCorrect ? Colors.green.withOpacity(0.08) : Colors.red.withOpacity(0.08),
-                                border: Border.all(color: _isCorrect ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2)),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                _isCorrect ? '✅ 回答正确！' : '❌ 错误，正确句子是：\n${line.originalText}',
-                                style: TextStyle(
-                                  color: _isCorrect ? Colors.greenAccent : Colors.redAccent,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  height: 1.4,
+
+                            // Token Wrap list
+                            Wrap(
+                              spacing: 8.0,
+                              runSpacing: 12.0,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: tokens.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final tok = entry.value;
+                                final parts = _splitToken(tok);
+                                final prefix = parts['prefix']!;
+                                final clean = parts['clean']!;
+                                final suffix = parts['suffix']!;
+
+                                if (blankIndices.contains(idx)) {
+                                  final controller = _controllers[idx];
+                                  final focusNode = _focusNodes[idx];
+                                  final given = _inputs[idx] ?? '';
+                                  final isFieldCorrect = given.trim().toLowerCase() == clean.toLowerCase();
+
+                                  return Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (prefix.isNotEmpty)
+                                        Text(prefix, style: const TextStyle(fontSize: 22, color: Colors.white)),
+                                      SizedBox(
+                                        width: (clean.length * 14.0 + 36.0).clamp(60.0, 200.0),
+                                        child: TextField(
+                                          controller: controller,
+                                          focusNode: focusNode,
+                                          enabled: !_submitted,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold),
+                                          decoration: InputDecoration(
+                                            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                            isDense: true,
+                                            filled: true,
+                                            fillColor: _submitted
+                                                ? (isFieldCorrect ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15))
+                                                : Colors.deepPurple.withOpacity(0.08),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(color: Colors.deepPurpleAccent.withOpacity(0.5), style: BorderStyle.solid),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            disabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: isFieldCorrect ? Colors.green : Colors.red,
+                                                width: 2,
+                                              ),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            hintText: '___',
+                                            hintStyle: TextStyle(color: Colors.grey[700]),
+                                          ),
+                                          textInputAction: TextInputAction.next,
+                                          onSubmitted: (_) {
+                                            final sorted = blankIndices.toList()..sort();
+                                            final unfilled = sorted.where((i) {
+                                              if (i == idx) {
+                                                return _controllers[i]!.text.trim().isEmpty;
+                                              }
+                                              return (_inputs[i] ?? '').trim().isEmpty;
+                                            }).toList();
+
+                                            if (unfilled.isNotEmpty) {
+                                              _focusNodes[unfilled[0]]?.requestFocus();
+                                            } else {
+                                              _submitFocusNode.requestFocus();
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      if (suffix.isNotEmpty)
+                                        Text(suffix, style: const TextStyle(fontSize: 22, color: Colors.white)),
+                                    ],
+                                  );
+                                }
+
+                                return Text(tok, style: const TextStyle(fontSize: 22, color: Colors.white));
+                              }).toList(),
+                            ),
+
+                            // Correct/incorrect feedback
+                            if (_submitted) ...[
+                              const SizedBox(height: 24),
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: _isCorrect ? Colors.green.withOpacity(0.08) : Colors.red.withOpacity(0.08),
+                                  border: Border.all(color: _isCorrect ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2)),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Text(
+                                  _isCorrect ? '✅ 回答正确！' : '❌ 错误，正确句子是：\n${line.originalText}',
+                                  style: TextStyle(
+                                    color: _isCorrect ? Colors.greenAccent : Colors.redAccent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    height: 1.4,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ]
-                        ],
+                            ]
+                          ],
+                        ),
                       ),
                     ),
                   ),
