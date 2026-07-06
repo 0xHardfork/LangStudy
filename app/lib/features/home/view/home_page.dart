@@ -290,6 +290,17 @@ class HomePage extends StatelessWidget {
                   const SizedBox(height: 16),
 
                   _buildActionCard(
+                    id: 'btn-start-reading',
+                    emoji: '📚',
+                    title: '长文阅读与解析',
+                    desc: '上传并逐句翻译英文长文，进行深度语法解析',
+                    colors: [const Color(0xFF0B5394), const Color(0xFF0F172A)],
+                    glowColor: Colors.blueAccent.withOpacity(0.1),
+                    onTap: () => context.push('/reading'),
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildActionCard(
                     id: 'btn-start-history',
                     emoji: '📚',
                     title: '浏览学习历史',

@@ -16,6 +16,7 @@ import (
 	"github.com/0xHardfork/langstudy/internal/dialogue"
 	"github.com/0xHardfork/langstudy/internal/ebbinghaus"
 	"github.com/0xHardfork/langstudy/internal/grammar"
+	"github.com/0xHardfork/langstudy/internal/reading"
 	"github.com/0xHardfork/langstudy/internal/user"
 	"github.com/0xHardfork/langstudy/migrations"
 	"github.com/0xHardfork/langstudy/platform/auth"
@@ -163,6 +164,10 @@ func main() {
 	grammarService := grammar.NewService(grammarStore, llmService, log, llmCli, cfg.App.StaticDir)
 	grammarHandler := grammar.NewHandler(grammarService)
 
+	readingStore := reading.NewStore(db)
+	readingService := reading.NewService(readingStore, llmService, log, llmCli, cfg.App.StaticDir)
+	readingHandler := reading.NewHandler(readingService)
+
 	// 10. Router
 	ginMode := gin.DebugMode
 	if cfg.App.Env == "production" {
@@ -194,6 +199,7 @@ func main() {
 		dialogueHandler.RegisterRoutes(authed, adminGroup)
 		ebbHandler.RegisterRoutes(authed)
 		grammarHandler.RegisterRoutes(authed)
+		readingHandler.RegisterRoutes(authed)
 		llmHandler.RegisterRoutes(adminGroup)
 	}
 

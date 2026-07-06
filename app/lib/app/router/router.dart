@@ -10,6 +10,8 @@ import '../../features/study/view/fill_blank_exercise_page.dart';
 import '../../features/review/view/review_page.dart';
 import '../../features/grammar/view/grammar_dashboard_page.dart';
 import '../../features/grammar/view/grammar_article_detail_page.dart';
+import '../../features/reading/view/reading_dashboard_page.dart';
+import '../../features/reading/view/reading_article_detail_page.dart';
 import '../../features/history/view/learning_history_page.dart';
 
 final GoRouter router = GoRouter(
@@ -77,6 +79,21 @@ final GoRouter router = GoRouter(
           builder: (BuildContext context, GoRouterState state) {
             final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
             return GrammarArticleDetailPage(articleId: id);
+          },
+        ),
+      ],
+    ),
+    GoRoute(
+      path: '/reading',
+      builder: (BuildContext context, GoRouterState state) {
+        return const ReadingDashboardPage();
+      },
+      routes: [
+        GoRoute(
+          path: 'article/:id',
+          builder: (BuildContext context, GoRouterState state) {
+            final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+            return ReadingArticleDetailPage(articleId: id);
           },
         ),
       ],

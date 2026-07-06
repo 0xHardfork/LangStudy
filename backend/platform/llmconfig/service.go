@@ -34,6 +34,7 @@ func (s *service) UpdateConfig(ctx context.Context, req *UpdateConfigRequest) (*
 	cfg.PromptTpl = req.PromptTpl
 	cfg.VocabPromptTpl = req.VocabPromptTpl
 	cfg.GrammarPromptTpl = req.GrammarPromptTpl
+	cfg.ReadingPromptTpl = req.ReadingPromptTpl
 
 	if err := s.store.Update(ctx, cfg); err != nil {
 		return nil, err

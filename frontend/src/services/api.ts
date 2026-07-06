@@ -1,4 +1,4 @@
-import type { Dialogue, DialogueType, DialogueWithProgress, ReviewItem, UserLearningProfile, GrammarArticle, GrammarQuizReviewDetail, GrammarSentence, AuthUser } from '../types'
+import type { Dialogue, DialogueType, DialogueWithProgress, ReviewItem, UserLearningProfile, GrammarArticle, GrammarQuizReviewDetail, GrammarSentence, AuthUser, ReadingArticle, ReadingSentence } from '../types'
 
 const BASE = '/api/v1'
 
@@ -261,6 +261,29 @@ export function regenerateGrammarSentence(token: string, sentenceId: number): Pr
 
 export function rejectDialogue(token: string, dialogueId: number): Promise<{ ok: boolean }> {
   return apiCall<{ ok: boolean }>(token, `/dialogue/${dialogueId}/reject`, {
+    method: 'POST',
+  })
+}
+
+// ─── Reading ───────────────────────────────────────────────────────────────
+
+export function createReadingArticle(token: string, title: string, text: string): Promise<ReadingArticle> {
+  return apiCall<ReadingArticle>(token, '/reading/analyze', {
+    method: 'POST',
+    body: JSON.stringify({ title, text }),
+  })
+}
+
+export function getReadingHistory(token: string): Promise<ReadingArticle[]> {
+  return apiCall<ReadingArticle[]>(token, '/reading/history')
+}
+
+export function getReadingArticle(token: string, id: number): Promise<ReadingArticle> {
+  return apiCall<ReadingArticle>(token, `/reading/article/${id}`)
+}
+
+export function regenerateReadingSentence(token: string, sentenceId: number): Promise<ReadingSentence> {
+  return apiCall<ReadingSentence>(token, `/reading/sentence/${sentenceId}/regenerate`, {
     method: 'POST',
   })
 }

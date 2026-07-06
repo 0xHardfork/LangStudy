@@ -7,6 +7,7 @@ import '../features/auth/cubit/auth_state.dart';
 import '../features/study/cubit/study_cubit.dart';
 import '../features/review/cubit/review_cubit.dart';
 import '../features/grammar/cubit/grammar_cubit.dart';
+import '../features/reading/cubit/reading_cubit.dart';
 import 'router/router.dart';
 
 class App extends StatelessWidget {
@@ -27,6 +28,9 @@ class App extends StatelessWidget {
         ),
         BlocProvider<GrammarCubit>(
           create: (context) => getIt<GrammarCubit>()..loadHistory(),
+        ),
+        BlocProvider<ReadingCubit>(
+          create: (context) => getIt<ReadingCubit>()..loadHistory(),
         ),
       ],
       child: BlocListener<AuthCubit, AuthState>(

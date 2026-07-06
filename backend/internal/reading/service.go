@@ -1,0 +1,368 @@
+package reading
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/0xHardfork/langstudy/platform/llm"
+	"github.com/0xHardfork/langstudy/platform/llmconfig"
+	"go.uber.org/zap"
+)
+
+// Service defines the business logic interface for reading study.
+type Service interface {
+	AnalyzeText(ctx context.Context, userID uint, req *AnalyzeReadingRequest) (*ReadingArticle, error)
+	GetHistory(ctx context.Context, userID uint) ([]ReadingArticle, error)
+	GetArticle(ctx context.Context, id, userID uint) (*ReadingArticle, error)
+	RegenerateSentence(ctx context.Context, userID, sentenceID uint) (*ReadingSentence, error)
+}
+
+type svc struct {
+	store     Store
+	llmSvc    llmconfig.Service
+	log       *zap.Logger
+	llmCli    *llm.Client
+	staticDir string
+}
+
+// NewService creates a new reading Service instance.
+func NewService(store Store, llmSvc llmconfig.Service, log *zap.Logger, llmCli *llm.Client, staticDir string) Service {
+	return &svc{
+		store:     store,
+		llmSvc:    llmSvc,
+		log:       log,
+		llmCli:    llmCli,
+		staticDir: staticDir,
+	}
+}
+
+const defaultReadingPromptTpl = `You are an expert English teacher. Analyze the grammar structure of the following sentence and translate it.
+
+Sentence: "%s"
+
+Generate a JSON object strictly matching this schema:
+{
+  "translation": "accurate Chinese translation of the sentence",
+  "explanation": "Detailed grammatical analysis of the sentence structure (Subject, Verb, Object, Clauses, Modifiers, etc.) and explanations of the syntax rules used."
+}`
+
+func buildReadingPrompt(tpl string, sentence string) string {
+	if tpl != "" {
+		r := strings.NewReplacer(
+			"{{sentence}}", sentence,
+		)
+		return r.Replace(tpl)
+	}
+	return fmt.Sprintf(defaultReadingPromptTpl, sentence)
+}
+
+func splitSentences(text string) []string {
+	normalized := strings.ReplaceAll(text, "\r\n", " ")
+	normalized = strings.ReplaceAll(normalized, "\n", " ")
+
+	var sentences []string
+	var current strings.Builder
+
+	runes := []rune(normalized)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		current.WriteRune(r)
+
+		if r == '.' || r == '?' || r == '!' {
+			isEnd := i == len(runes)-1
+			if !isEnd {
+				next := runes[i+1]
+				if next == ' ' || next == '"' || next == '\'' {
+					sentences = append(sentences, strings.TrimSpace(current.String()))
+					current.Reset()
+				}
+			} else {
+				sentences = append(sentences, strings.TrimSpace(current.String()))
+				current.Reset()
+			}
+		}
+	}
+	if current.Len() > 0 {
+		trimmed := strings.TrimSpace(current.String())
+		if trimmed != "" {
+			sentences = append(sentences, trimmed)
+		}
+	}
+
+	var cleaned []string
+	for _, s := range sentences {
+		if s != "" {
+			cleaned = append(cleaned, s)
+		}
+	}
+	return cleaned
+}
+
+func cleanJSONMarkdown(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```json") {
+		s = strings.TrimPrefix(s, "```json")
+		s = strings.TrimSuffix(s, "```")
+	} else if strings.HasPrefix(s, "```") {
+		s = strings.TrimPrefix(s, "```")
+		s = strings.TrimSuffix(s, "```")
+	}
+	return strings.TrimSpace(s)
+}
+
+var trailingCommaRx = regexp.MustCompile(`,\s*([\}\]])`)
+
+func repairJSON(s string) string {
+	s = strings.TrimSpace(s)
+	s = trailingCommaRx.ReplaceAllString(s, "$1")
+	return s
+}
+
+func (s *svc) AnalyzeText(ctx context.Context, userID uint, req *AnalyzeReadingRequest) (*ReadingArticle, error) {
+	cfg, err := s.llmSvc.GetConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get llm config: %w", err)
+	}
+
+	// 1. Split into paragraphs first to maintain layout, then split into sentences
+	text := strings.ReplaceAll(req.Text, "\r\n", "\n")
+	rawParagraphs := strings.Split(text, "\n")
+
+	var sentences []ReadingSentence
+	sentenceIdx := 0
+	paragraphIdx := 0
+
+	for _, pText := range rawParagraphs {
+		pText = strings.TrimSpace(pText)
+		if pText == "" {
+			continue
+		}
+		pSentences := splitSentences(pText)
+		for _, sText := range pSentences {
+			sentences = append(sentences, ReadingSentence{
+				SentenceIndex:  sentenceIdx,
+				ParagraphIndex: paragraphIdx,
+				OriginalText:   sText,
+				CreatedAt:      time.Now(),
+			})
+			sentenceIdx++
+		}
+		paragraphIdx++
+	}
+
+	if len(sentences) == 0 {
+		return nil, errors.New("no sentences found in text")
+	}
+
+	folderName := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	// 2. Concurrently analyze sentences and generate TTS
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5) // max 5 concurrent LLM calls
+
+	for i := range sentences {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			sText := sentences[idx].OriginalText
+
+			if ctx.Err() != nil {
+				sentences[idx].Translation = "（处理被取消）"
+				sentences[idx].Explanation = "因超时或请求取消，本句未进行语法解析。"
+				return
+			}
+
+			// Generate audio
+			audioRelPath := fmt.Sprintf("static/audio/reading/%s/%d.mp3", folderName, idx)
+			ttsErr := s.generateAudio(ctx, sText, audioRelPath)
+			if ttsErr == nil {
+				sentences[idx].AudioPath = &audioRelPath
+			} else {
+				s.log.Warn("tts generation failed for reading sentence", zap.String("sentence", sText), zap.Error(ttsErr))
+			}
+
+			// Call LLM
+			prompt := buildReadingPrompt(cfg.ReadingPromptTpl, sText)
+			llmOutput, err := s.llmCli.Call(ctx, cfg.ApiUrl, cfg.ApiKey, cfg.ModelName, prompt)
+			if err != nil {
+				s.log.Warn("failed to call LLM for reading analysis", zap.String("sentence", sText), zap.Error(err))
+				sentences[idx].Translation = "（AI 翻译失败）"
+				sentences[idx].Explanation = fmt.Sprintf("AI 语法分析失败，错误: %v", err)
+				return
+			}
+
+			cleanedJSON := cleanJSONMarkdown(llmOutput)
+			repairedJSON := repairJSON(cleanedJSON)
+
+			var parsed struct {
+				Translation string `json:"translation"`
+				Explanation string `json:"explanation"`
+			}
+
+			if err := json.Unmarshal([]byte(repairedJSON), &parsed); err != nil {
+				s.log.Warn("failed to parse JSON from LLM output", zap.String("output", llmOutput), zap.Error(err))
+				sentences[idx].Translation = "（格式解析失败）"
+				sentences[idx].Explanation = fmt.Sprintf("AI 原始分析输出如下：\n%s", llmOutput)
+				return
+			}
+
+			sentences[idx].Translation = parsed.Translation
+			sentences[idx].Explanation = parsed.Explanation
+		}(i)
+	}
+	wg.Wait()
+
+	art := &ReadingArticle{
+		UserID:    userID,
+		Title:     req.Title,
+		RawText:   req.Text,
+		Sentences: sentences,
+		CreatedAt: time.Now(),
+	}
+
+	if err := s.store.CreateArticle(ctx, art); err != nil {
+		return nil, err
+	}
+
+	return art, nil
+}
+
+func (s *svc) GetHistory(ctx context.Context, userID uint) ([]ReadingArticle, error) {
+	return s.store.GetArticles(ctx, userID)
+}
+
+func (s *svc) GetArticle(ctx context.Context, id, userID uint) (*ReadingArticle, error) {
+	return s.store.GetArticle(ctx, id, userID)
+}
+
+func (s *svc) RegenerateSentence(ctx context.Context, userID, sentenceID uint) (*ReadingSentence, error) {
+	cfg, err := s.llmSvc.GetConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get llm config: %w", err)
+	}
+
+	sent, err := s.store.GetSentence(ctx, sentenceID)
+	if err != nil {
+		return nil, err
+	}
+	if sent == nil {
+		return nil, fmt.Errorf("sentence not found")
+	}
+
+	art, err := s.store.GetArticle(ctx, sent.ArticleID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if art == nil {
+		return nil, fmt.Errorf("unauthorized access to sentence")
+	}
+
+	// Re-generate audio if missing
+	if sent.AudioPath == nil || *sent.AudioPath == "" {
+		folderName := fmt.Sprintf("%d", time.Now().UnixNano())
+		audioRelPath := fmt.Sprintf("static/audio/reading/%s/re_%d.mp3", folderName, sentenceID)
+		ttsErr := s.generateAudio(ctx, sent.OriginalText, audioRelPath)
+		if ttsErr == nil {
+			sent.AudioPath = &audioRelPath
+		}
+	}
+
+	// Re-run LLM
+	prompt := buildReadingPrompt(cfg.ReadingPromptTpl, sent.OriginalText)
+	llmOutput, err := s.llmCli.Call(ctx, cfg.ApiUrl, cfg.ApiKey, cfg.ModelName, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("AI analysis failed: %w", err)
+	}
+
+	cleanedJSON := cleanJSONMarkdown(llmOutput)
+	repairedJSON := repairJSON(cleanedJSON)
+
+	var parsed struct {
+		Translation string `json:"translation"`
+		Explanation string `json:"explanation"`
+	}
+
+	if err := json.Unmarshal([]byte(repairedJSON), &parsed); err != nil {
+		return nil, fmt.Errorf("AI format parse failed: %w (raw output: %s)", err, llmOutput)
+	}
+
+	sent.Translation = parsed.Translation
+	sent.Explanation = parsed.Explanation
+
+	if err := s.store.UpdateSentence(ctx, sent); err != nil {
+		return nil, err
+	}
+
+	return sent, nil
+}
+
+// --- TTS helper functions ---
+
+var (
+	edgeTTSBinOnce sync.Once
+	edgeTTSBinPath string
+)
+
+func edgeTTSBin() string {
+	edgeTTSBinOnce.Do(func() {
+		binName := "edge-tts"
+		if runtime.GOOS == "windows" {
+			binName = "edge-tts.exe"
+		}
+		candidates := []string{
+			filepath.Join("..", ".venv", "bin", binName), // from backend/
+			filepath.Join(".venv", "bin", binName),       // from project root
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				if abs, err := filepath.Abs(c); err == nil {
+					edgeTTSBinPath = abs
+					return
+				}
+			}
+		}
+		edgeTTSBinPath = "edge-tts"
+	})
+	return edgeTTSBinPath
+}
+
+func (s *svc) generateAudio(ctx context.Context, text, outputPath string) error {
+	voice := "en-US-JennyNeural"
+
+	// Map virtual path to physical
+	physicalPath := outputPath
+	if strings.HasPrefix(outputPath, "static/") {
+		physicalPath = filepath.Join(s.staticDir, strings.TrimPrefix(outputPath, "static/"))
+	} else if strings.HasPrefix(outputPath, "static\\") {
+		physicalPath = filepath.Join(s.staticDir, strings.TrimPrefix(outputPath, "static\\"))
+	}
+
+	if err := os.MkdirAll(filepath.Dir(physicalPath), 0755); err != nil {
+		return fmt.Errorf("create audio folder: %w", err)
+	}
+
+	bin := edgeTTSBin()
+	cmd := exec.CommandContext(ctx, bin,
+		"--voice", voice,
+		"--text", text,
+		"--write-media", physicalPath,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("edge-tts [%s]: %w — output: %s", bin, err, string(out))
+	}
+	return nil
+}

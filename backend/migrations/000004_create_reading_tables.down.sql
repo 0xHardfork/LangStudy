@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS reading_sentences CASCADE;
+DROP TABLE IF EXISTS reading_articles CASCADE;

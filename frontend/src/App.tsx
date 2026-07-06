@@ -8,6 +8,7 @@ import ReviewExercise from './pages/ReviewExercise'
 import UserProfileModal from './components/UserProfileModal'
 import LearningHistory from './pages/LearningHistory'
 import GrammarDashboard from './pages/GrammarDashboard'
+import ReadingDashboard from './pages/ReadingDashboard'
 import Home from './pages/Home'
 import Header from './components/layout/Header'
 import { useAuth } from './hooks/useAuth'
@@ -142,6 +143,12 @@ function AppContent() {
 
               <Route path="/grammar" element={
                 <GrammarDashboard
+                  onBack={() => navigate('/')}
+                />
+              } />
+
+              <Route path="/reading" element={
+                <ReadingDashboard
                   onBack={() => navigate('/')}
                 />
               } />

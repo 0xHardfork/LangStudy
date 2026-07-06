@@ -121,6 +121,27 @@ export interface GrammarArticle {
   created_at: string
 }
 
+export interface ReadingSentence {
+  id: number
+  article_id: number
+  sentence_index: number
+  paragraph_index: number
+  original_text: string
+  translation: string
+  explanation: string
+  audio_path: string | null
+  created_at: string
+}
+
+export interface ReadingArticle {
+  id: number
+  user_id: number
+  title: string
+  raw_text: string
+  sentences?: ReadingSentence[]
+  created_at: string
+}
+
 export interface GrammarQuizReviewDetail {
   review_id: number
   grammar_quiz_id: number

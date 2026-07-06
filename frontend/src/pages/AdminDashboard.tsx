@@ -625,6 +625,36 @@ Generate a JSON object strictly matching this schema:
                 <Input.TextArea rows={12} placeholder="Template for grammar analysis and cloze generation..." />
               </Form.Item>
 
+              <Form.Item
+                name="reading_prompt_tpl"
+                label="Long Text Analysis Prompt Template (长文语法分析 Prompt 模版)"
+                rules={[{ required: true, message: 'Reading Prompt Template is required' }]}
+                extra={
+                  <div className="mt-2 text-xs text-slate-400 border border-slate-800/80 bg-slate-950/40 rounded-lg p-3 space-y-1.5">
+                    <div>
+                      <strong>可使用变量：</strong>
+                      <code className="text-blue-400 ml-1">{"{{sentence}}"}</code> (待分析的原始英文单句内容)。
+                    </div>
+                    <div>
+                      <strong>模版示例：</strong>
+                      <pre className="text-slate-500 font-mono text-[10px] mt-1 bg-slate-950 p-2 rounded overflow-x-auto leading-relaxed">
+{`You are an expert English teacher. Analyze the grammar structure of the following sentence and translate it.
+
+Sentence: "{{sentence}}"
+
+Generate a JSON object strictly matching this schema:
+{
+  "translation": "accurate Chinese translation of the sentence",
+  "explanation": "Detailed grammatical analysis of the sentence structure and explanations of the syntax rules used."
+}`}
+                      </pre>
+                    </div>
+                  </div>
+                }
+              >
+                <Input.TextArea rows={12} placeholder="Template for long text sentence analysis..." />
+              </Form.Item>
+
               <Form.Item className="mb-0 flex justify-end space-x-3">
                 <Button
                   type="default"

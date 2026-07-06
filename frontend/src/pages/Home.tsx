@@ -148,6 +148,14 @@ export default function Home() {
           onClick={() => navigate('/grammar')}
         />
         <ActionCard
+          id="btn-start-reading"
+          emoji="📚"
+          title="长文阅读与语法解析"
+          desc="上传并逐句翻译英文长文，进行深度语法解析"
+          cardClass="bg-gradient-to-br from-cyan-950/40 to-indigo-950/30 hover:from-cyan-900/50 hover:to-indigo-900/40 hover:shadow-indigo-500/5"
+          onClick={() => navigate('/reading')}
+        />
+        <ActionCard
           id="btn-start-history"
           emoji="📚"
           title="浏览学习历史"

@@ -11,6 +11,8 @@ import 'package:langstudy/features/review/cubit/review_cubit.dart';
 import 'package:langstudy/features/review/cubit/review_state.dart';
 import 'package:langstudy/features/grammar/cubit/grammar_cubit.dart';
 import 'package:langstudy/features/grammar/cubit/grammar_state.dart';
+import 'package:langstudy/features/reading/cubit/reading_cubit.dart';
+import 'package:langstudy/features/reading/cubit/reading_state.dart';
 
 // ─── Fake Cubits using noSuchMethod fallback ────────────────────────────────
 
@@ -54,6 +56,16 @@ class FakeGrammarCubit extends Cubit<GrammarState> implements GrammarCubit {
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
+class FakeReadingCubit extends Cubit<ReadingState> implements ReadingCubit {
+  FakeReadingCubit() : super(ReadingInitial());
+
+  @override
+  Future<void> loadHistory() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
     // Mock SharedPreferences
@@ -67,6 +79,7 @@ void main() {
     getIt.registerSingleton<StudyCubit>(FakeStudyCubit());
     getIt.registerSingleton<ReviewCubit>(FakeReviewCubit());
     getIt.registerSingleton<GrammarCubit>(FakeGrammarCubit());
+    getIt.registerSingleton<ReadingCubit>(FakeReadingCubit());
 
     // Build our app and trigger a frame.
     await tester.pumpWidget(const App());
