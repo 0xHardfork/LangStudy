@@ -8,7 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-# 优先从本地不受 Git 跟踪的环境变量文件载入凭据
 ENV_FILE="$SCRIPT_DIR/.env.deploy"
 if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
@@ -20,7 +19,6 @@ if [ -z "$SERVER_IP" ]; then
     read -p "Enter Target Production Server IP: " SERVER_IP
 fi
 
-# 优先读取环境变量，无则交互式安全输入，杜绝凭据硬编码进入 git
 if [ -z "$PASSPHRASE" ]; then
     read -s -p "Enter SSH Key Passphrase: " PASSPHRASE
     echo ""

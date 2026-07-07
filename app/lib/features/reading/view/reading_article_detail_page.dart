@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../cubit/reading_cubit.dart';
 import '../cubit/reading_state.dart';
 import '../models/reading_models.dart';
 import '../../../shared/widgets/audio_player_control.dart';
+import '../../../core/config/app_config.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 class ReadingArticleDetailPage extends StatefulWidget {
@@ -17,13 +19,139 @@ class ReadingArticleDetailPage extends StatefulWidget {
 }
 
 class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
+  late final AudioPlayer _audioPlayer;
+  List<GlobalKey> _bubbleKeys = [];
+
+  int? _playingIndex;
+  bool _isSingleLoop = false;
+  bool _isFullLoop = false;
+  PlayerState _playerState = PlayerState.stopped;
+  bool _isSwitchingSource = false;
+  double _playbackSpeed = 1.0;
+
   @override
   void initState() {
     super.initState();
+    _audioPlayer = AudioPlayer();
+
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) {
+        setState(() {
+          _playerState = state;
+        });
+      }
+    });
+
+    _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted && !_isSwitchingSource) {
+        _onPlaybackComplete();
+      }
+    });
+
     context.read<ReadingCubit>().getReadingArticle(widget.articleId);
   }
 
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _playLine(int index, List<ReadingSentence> sentences) async {
+    if (index < 0 || index >= sentences.length) return;
+    final sentence = sentences[index];
+    final path = sentence.audioPath;
+    if (path == null || path.isEmpty) return;
+
+    final baseUrl = AppConfig.instance.baseUrl;
+    final cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    final fullUrl = path.startsWith('http') ? path : '$baseUrl/$cleanPath';
+
+    setState(() {
+      _playingIndex = index;
+      _isSwitchingSource = true;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToIndex(index);
+    });
+
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.play(UrlSource(fullUrl));
+      await _audioPlayer.setPlaybackRate(_playbackSpeed);
+      if (mounted) {
+        setState(() {
+          _isSwitchingSource = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isSwitchingSource = false;
+          _playingIndex = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _togglePlayLine(int index, List<ReadingSentence> sentences) async {
+    if (_playingIndex == index) {
+      if (_playerState == PlayerState.playing) {
+        await _audioPlayer.pause();
+      } else {
+        await _audioPlayer.resume();
+        await _audioPlayer.setPlaybackRate(_playbackSpeed);
+      }
+    } else {
+      await _playLine(index, sentences);
+    }
+  }
+
+  void _onPlaybackComplete() {
+    if (!mounted) return;
+    final cubitState = context.read<ReadingCubit>().state;
+    if (cubitState is! ReadingLoaded || cubitState.currentArticle == null) return;
+    final sentences = cubitState.currentArticle!.sentences ?? [];
+
+    Future.delayed(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      if (_isSingleLoop && _playingIndex != null) {
+        _playLine(_playingIndex!, sentences);
+      } else if (_isFullLoop && _playingIndex != null) {
+        final nextIndex = _playingIndex! + 1;
+        if (nextIndex < sentences.length) {
+          _playLine(nextIndex, sentences);
+        } else {
+          _playLine(0, sentences);
+        }
+      } else {
+        setState(() {
+          _playingIndex = null;
+        });
+      }
+    });
+  }
+
+  void _scrollToIndex(int index) {
+    if (index < 0 || index >= _bubbleKeys.length) return;
+    final context = _bubbleKeys[index].currentContext;
+    if (context != null) {
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   void _showSentenceDetails(BuildContext context, ReadingSentence sentence, bool analyzing) {
+    // Stop main audio player when opening sentence details bottom sheet
+    _audioPlayer.stop();
+    setState(() {
+      _playingIndex = null;
+    });
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -37,7 +165,6 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
             return BlocListener<ReadingCubit, ReadingState>(
               listener: (context, state) {
                 if (state is ReadingLoaded) {
-                  // Find updated sentence to refresh UI within the modal
                   final updatedSent = state.currentArticle?.sentences?.firstWhere(
                     (s) => s.id == sentence.id,
                     orElse: () => sentence,
@@ -65,7 +192,6 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Drag handle
                         Center(
                           child: Container(
                             width: 40,
@@ -77,8 +203,6 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
                           ),
                         ),
                         const SizedBox(height: 24),
-
-                        // Header (Index & TTS Audio)
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -90,8 +214,6 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
                           ],
                         ),
                         const SizedBox(height: 20),
-
-                        // English text
                         const Text('英文原文', style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 6),
                         Text(
@@ -99,8 +221,6 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
                           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white, height: 1.4),
                         ),
                         const SizedBox(height: 20),
-
-                        // Chinese translation
                         const Text('中文释义', style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 6),
                         Text(
@@ -108,8 +228,6 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
                           style: const TextStyle(fontSize: 14, color: Colors.grey, height: 1.4),
                         ),
                         const SizedBox(height: 20),
-
-                        // Grammar Analysis
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -133,7 +251,6 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
                           ],
                         ),
                         const SizedBox(height: 8),
-
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -212,12 +329,9 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
               final article = state.currentArticle!;
               final sentences = article.sentences ?? [];
 
-              // Group sentences by paragraph
-              final Map<int, List<ReadingSentence>> paragraphs = {};
-              for (final sent in sentences) {
-                paragraphs.putIfAbsent(sent.paragraphIndex, () => []).add(sent);
+              if (_bubbleKeys.length != sentences.length) {
+                _bubbleKeys = List.generate(sentences.length, (_) => GlobalKey());
               }
-              final pIndices = paragraphs.keys.toList()..sort();
 
               return Column(
                 children: [
@@ -233,6 +347,109 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
                     ),
                   ),
 
+                  // Audio Control Panel
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF0F172A),
+                      border: Border(bottom: BorderSide(color: Color(0xFF1E293B))),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _playingIndex != null
+                                    ? '${_playerState == PlayerState.playing ? "正在播放" : "已暂停"} 第 ${_playingIndex! + 1} / ${sentences.length} 句'
+                                    : '未开始播放',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _isSingleLoop
+                                    ? '单句循环模式开启'
+                                    : (_isFullLoop ? '全文循环模式开启' : '单次播放模式'),
+                                style: const TextStyle(color: Colors.grey, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                Icons.repeat_one,
+                                color: _isSingleLoop ? Colors.blueAccent : Colors.grey,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _isSingleLoop = !_isSingleLoop;
+                                  if (_isSingleLoop) {
+                                    _isFullLoop = false;
+                                  }
+                                });
+                              },
+                              tooltip: '单句循环',
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                Icons.repeat,
+                                color: _isFullLoop ? Colors.blueAccent : Colors.grey,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _isFullLoop = !_isFullLoop;
+                                  if (_isFullLoop) {
+                                    _isSingleLoop = false;
+                                  }
+                                });
+                              },
+                              tooltip: '全文循环',
+                            ),
+                            const SizedBox(width: 8),
+                            PopupMenuButton<double>(
+                              icon: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: _playbackSpeed == 1.0 ? Colors.grey : Colors.blueAccent),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '${_playbackSpeed}x',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: _playbackSpeed == 1.0 ? Colors.grey : Colors.blueAccent,
+                                  ),
+                                ),
+                              ),
+                              tooltip: '播放速度',
+                              onSelected: (double speed) async {
+                                setState(() {
+                                  _playbackSpeed = speed;
+                                });
+                                if (_playerState == PlayerState.playing) {
+                                  await _audioPlayer.setPlaybackRate(speed);
+                                }
+                              },
+                              itemBuilder: (BuildContext context) => <PopupMenuEntry<double>>[
+                                const PopupMenuItem<double>(value: 0.5, child: Text('0.5x 极慢')),
+                                const PopupMenuItem<double>(value: 0.8, child: Text('0.8x 较慢')),
+                                const PopupMenuItem<double>(value: 1.0, child: Text('1.0x 正常')),
+                                const PopupMenuItem<double>(value: 1.2, child: Text('1.2x 稍快')),
+                                const PopupMenuItem<double>(value: 1.5, child: Text('1.5x 较快')),
+                                const PopupMenuItem<double>(value: 2.0, child: Text('2.0x 极快')),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
                   // Chat-like sentence list
                   Expanded(
                     child: ListView.builder(
@@ -240,57 +457,79 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
                       itemCount: sentences.length,
                       itemBuilder: (context, index) {
                         final sent = sentences[index];
+                        final isCurrentLine = _playingIndex == index;
+                        final isLinePlaying = isCurrentLine && _playerState == PlayerState.playing;
 
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12.0),
                           child: Align(
                             alignment: Alignment.centerLeft,
-                            child: InkWell(
-                              onTap: () => _showSentenceDetails(context, sent, state.analyzing),
-                              borderRadius: BorderRadius.circular(16),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                constraints: BoxConstraints(
-                                  maxWidth: MediaQuery.of(context).size.width * 0.85,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E293B),
-                                  borderRadius: const BorderRadius.only(
-                                    topLeft: Radius.circular(16),
-                                    topRight: Radius.circular(16),
-                                    bottomRight: Radius.circular(16),
-                                    bottomLeft: Radius.circular(4),
-                                  ),
-                                  border: Border.all(color: Colors.grey.withOpacity(0.1)),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      sent.originalText,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        height: 1.4,
+                            child: Row(
+                              key: _bubbleKeys[index],
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: () => _showSentenceDetails(context, sent, state.analyzing),
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                      decoration: BoxDecoration(
+                                        color: isCurrentLine
+                                            ? Colors.blue[950]?.withOpacity(0.4)
+                                            : const Color(0xFF1E293B),
+                                        borderRadius: const BorderRadius.only(
+                                          topLeft: Radius.circular(16),
+                                          topRight: Radius.circular(16),
+                                          bottomRight: Radius.circular(16),
+                                          bottomLeft: Radius.circular(4),
+                                        ),
+                                        border: Border.all(
+                                          color: isCurrentLine ? Colors.blueAccent : Colors.grey.withOpacity(0.1),
+                                          width: isCurrentLine ? 2.0 : 1.0,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            sent.originalText,
+                                            style: TextStyle(
+                                              color: isCurrentLine ? Colors.white : const Color(0xFFE2E8F0),
+                                              fontWeight: isCurrentLine ? FontWeight.w600 : FontWeight.normal,
+                                              fontSize: 15,
+                                              height: 1.4,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                'P${sent.paragraphIndex + 1} - S${sent.sentenceIndex + 1}',
+                                                style: TextStyle(color: Colors.grey[500], fontSize: 10, fontWeight: FontWeight.w600),
+                                              ),
+                                              Text(
+                                                '点击查看翻译与语法 💡',
+                                                style: TextStyle(color: Colors.blue[300], fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          'P${sent.paragraphIndex + 1} - S${sent.sentenceIndex + 1}',
-                                          style: TextStyle(color: Colors.grey[500], fontSize: 10, fontWeight: FontWeight.w600),
-                                        ),
-                                        Text(
-                                          '点击查看翻译与语法 💡',
-                                          style: TextStyle(color: Colors.blue[300], fontSize: 10, fontWeight: FontWeight.bold),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: Icon(
+                                    isLinePlaying ? Icons.pause_circle : Icons.play_circle,
+                                    color: isCurrentLine ? Colors.blueAccent : Colors.grey,
+                                    size: 28,
+                                  ),
+                                  onPressed: () => _togglePlayLine(index, sentences),
+                                ),
+                              ],
                             ),
                           ),
                         );
