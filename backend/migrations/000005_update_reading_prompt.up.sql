@@ -1,4 +1,3 @@
-ALTER TABLE llm_configs ADD COLUMN reading_prompt_tpl TEXT NOT NULL DEFAULT '';
 UPDATE llm_configs SET reading_prompt_tpl = 'You are an expert English teacher. Analyze the grammar structure of the following sentence, translate it, and output a detailed grammatical breakdown in a clean, unified Markdown format.
 
 Sentence: "{{sentence}}"
