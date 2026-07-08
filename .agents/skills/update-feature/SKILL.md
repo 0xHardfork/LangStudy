@@ -1,41 +1,81 @@
 ---
 name: update-feature
-description: 指导代理修改、优化或重构已有的功能模块。适用于修复 Bug、调整 UI 样式、优化性能或调整数据库表结构的场景。
+description: Guides the agent to modify, optimize, or refactor an existing full-stack feature, covering backend, web frontend, and Flutter mobile app simultaneously. Use this for cross-cutting bug fixes, API contract changes, or refactoring that spans all three layers.
 ---
 
-# 更新功能开发技能 (Update Feature Skill)
+# Update Feature Skill (Full-Stack Orchestrator)
 
-本技能指导代理如何在 `LangStudy` 中对已有功能进行安全、高效的修改或重构，防范回归 Bug 并保持系统稳定性。
+This skill guides the agent to safely and consistently update an existing feature across **all three layers** of the `LangStudy` system: backend API, React web frontend, and Flutter mobile app.
 
-## 开发步骤流程
+## Before You Start: Cross-Layer Impact Assessment
 
-### 1. 影响面评估与引用检索
-- 在对任何共享代码（如公共 UI 组件、Zustand 全局状态、后端 Service 或 `platform/` 库）进行修改之前，**必须**使用检索工具寻找全局引用：
-  - 了解当前的调用方有哪些，确保修改不会破坏其他模块的正常运行。
-- 如果涉及 API 数据结构调整，评估是否会产生前后端兼容性影响。
+When a change touches a shared contract (e.g., API response shape, database schema, or shared business logic), always assess the blast radius first:
+- Which backend handlers, services, and stores are affected?
+- Which React components or Zustand store fields consume the changed API or data type?
+- Which Flutter models, Cubits, or Datasources depend on the changed contract?
 
-### 2. 后端逻辑更新 (Go)
-- **数据库表结构变更**：
-  - 若修改了 `internal/*/model.go` 中的表字段，**必须**同步在 `migrations/` 中编写相应的变更迁移脚本（如新增 `*.up.sql` 和 `*.down.sql`）。
-- **向后兼容性**：
-  - 尽量避免直接破坏已有接口的响应格式，如确实需要修改，须提前与用户沟通。
-- **保留日志与健壮性**：
-  - 确保保留原有的 Zap 结构化日志，并在变更中传递 Context。对于涉及大模型解析的逻辑，继续保持防爆设计。
-- **提示词管理与可配置要求 (Prompt CONFIG)**：
-  - 若修改、优化或重构的业务逻辑涉及到大语言模型（LLM）的 Prompt，**必须**同步检查其是否已在管理端配置，严禁在代码中写死新 Prompt。
-  - 如果被修改的原功能中仍存在旧有的硬编码 Prompt，必须借此机会将其重构提取至 `llm_configs` 表和 `UpdateConfigRequest`，并在管理端 `AdminDashboard` 新增配置文本域。
-  - **重构提示词时，必须同步在新增的 SQL 数据库迁移脚本中，将当前的硬编码 Prompt 写入作为初始化数据，确保管理端后台加载时拥有完整的默认提示词配置。**
-  - 在代码中通过 API 动态载入，仅在 DB 配置为空时使用原有 Prompt 串降级兜底。
+Document the affected files before making any changes. This prevents accidental regressions in layers you didn't intend to modify.
 
-### 3. 前端交互更新 (React)
-- **样式统一与 Tailwind v4**：
-  - 修改已有样式时，一律使用 TailwindCSS 样式。严禁直接写入 inline style 或原生 CSS 文件。
-  - 确保动效过渡平滑，与应用中已有的视觉调性一致。
-- **Zustand Store 修改**：
-  - 如果在 Zustand Store 中修改或删除了字段，必须全局检查使用此字段的所有组件，并同步更新 Store 的 `reset()` 重置方法。
+---
 
-### 4. 验证与回归测试
-- 在修改完成后，必须执行以下验证：
-  - 后端编译与测试：编译 `go build ./...` 并运行单元测试 `go test ./...`
-  - 前端编译：`npm run build`
-  - 运行已有的相关单元测试，检查修改是否引起旧逻辑的回归报错。
+## Layer 1: Backend (Go / Gin / GORM)
+> Follow the `update-backend-feature` skill for full details.
+
+**Key steps:**
+- Search for all callers of any shared service, `platform/` library, or database model being changed.
+- If modifying `internal/*/model.go`, write the corresponding `.up.sql` / `.down.sql` migration files.
+- Preserve backward compatibility where possible. Discuss breaking API changes with the user before proceeding.
+- Preserve all existing Zap structured logging; always pass `context.Context` through the call chain.
+- If any hardcoded LLM prompt is encountered, extract it to `llm_configs` and seed it in the migration SQL.
+
+**Verification:**
+```bash
+go build ./...
+go test ./...
+```
+
+---
+
+## Layer 2: Web Frontend (React 19 / TypeScript / Zustand / Tailwind v4)
+> Follow the `update-web-feature` skill for full details.
+
+**Key steps:**
+- Search for all usages of the component, store field, or API function being changed.
+- Update TypeScript type definitions in `src/types/` if the API contract changed.
+- Update `src/services/api.ts` to match the new API shape.
+- If a Zustand store field is modified or removed, update `reset()` and all consuming components.
+- Migrate any remaining inline `style={{}}` to Tailwind classes encountered during the update.
+- After modifications, ensure no file exceeds 300 lines.
+
+**Verification:**
+```bash
+npm run build
+```
+
+---
+
+## Layer 3: Flutter App (Dart / Flutter / Cubit / GetIt)
+> Follow the `update-app-feature` skill for full details.
+
+**Key steps:**
+- Search for all usages of the Cubit, Repository, or model being changed.
+- If a model's `fromJson`/`toJson` changes, verify all deserialization sites.
+- If a Cubit state variant is added or removed, update all `BlocBuilder`/`BlocListener` consumers.
+- If route paths or parameters change, update all navigation call sites.
+- Update `service_locator.dart` if constructor signatures change.
+
+**Verification:**
+```bash
+flutter analyze
+flutter test
+```
+
+---
+
+## Cross-Layer Checklist
+Before marking the update as complete, confirm:
+- [ ] All affected backend code compiles and tests pass
+- [ ] API contract changes are reflected in both web `src/types/` and app models
+- [ ] Web frontend builds with no TypeScript errors
+- [ ] Flutter app passes `flutter analyze` with no issues
+- [ ] No existing functionality in any layer has regressed

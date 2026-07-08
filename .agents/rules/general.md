@@ -4,83 +4,81 @@ trigger: always_on
 
 # LangStudy General Repository Rules
 
-本规则适用于本仓库（LangStudy）的所有开发，包括前端与后端，旨在确保代码规范、历史记录可追溯性以及部署稳定性。
+These rules apply to all development within this repository (LangStudy), including frontend and backend, to ensure code standardization, commit history traceability, and deployment stability.
 
 ---
 
-## Git 提交规范 (Commit Guidelines)
+## Git Commit Guidelines (Conventional Commits)
 
-所有 commit 消息必须遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范。
-格式要求如下：
+All commit messages must follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+The format is as follows:
 ```
 <type>(<scope>): <subject>
 
 [optional body]
 ```
 
-### 1. 常用 Type 类型
-- **`feat`**：新增功能业务逻辑或前端交互页面
-- **`fix`**：修复后端安全漏洞、性能问题、或前端布局和类型 Bug
-- **`refactor`**：代码重构（如组件拆分、消除重复代码，不改变业务表现）
-- **`style`**：仅样式统一及调整（如 Tailwind 样式迁移，不涉及逻辑变化）
-- **`test`**：新增、修改或修复单元测试与集成测试代码
-- **`docs`**：补充或更新文档、TODO 列表、或代码内行注释
+### 1. Common Types
+- **`feat`**: New business logic features or frontend interactive pages
+- **`fix`**: Fixes for backend security vulnerabilities, performance issues, or frontend layout/type bugs
+- **`refactor`**: Code refactoring (e.g. splitting components, removing duplicate code, without changing behavior)
+- **`style`**: Style changes and alignment only (e.g. TailwindCSS migration, no logic changes)
+- **`test`**: Adding, modifying, or fixing unit and integration tests
+- **`docs`**: Additions or updates to documentation, TODO lists, or inline comments
 
-### 2. 范例
+### 2. Examples
 - `feat(frontend): add fill-blank level 4 full text exercise option`
 - `fix(backend): fix userID leak in GetHistory database query`
 - `style(review): migrate inline style in GrammarReview to TailwindCSS class`
 
 ---
 
-## 代码开发与变更保障 (Quality Gates)
+## Quality Gates
 
-### 1. 编译前置检测 (Pre-commit / Pre-push Gate)
-- **编译成功性**：任何修改提交前，必须在本地运行并成功编译，严禁带编译报错提交。
-  - 前端编译命令：`npm run build` (tsc & vite build 必须 0 报错通过)
-  - 后端编译命令：`go build ./...`
-- **单元测试与验证**：
-  - 针对核心复杂算法与业务逻辑（例如前端挖空词符切分 `splitToken` / 过滤，后端艾宾浩斯曲线计算），必须编写单元测试验证关键边界情况。无需追求死板的 100% 覆盖率，以防过度设计拖慢开发效率。
-  - 新增 API 接口须追加基本的功能验证（前端可使用 Mock，后端可选择性使用单元/集成测试）。
+### 1. Pre-commit / Pre-push Gate
+- **Compilation Success**: Before submitting any modifications, code must compile successfully locally. Committing code with compiler errors is strictly prohibited.
+  - Frontend compile command: `npm run build` (tsc & vite build must pass with 0 errors)
+  - Backend compile command: `go build ./...`
+- **Unit Testing & Verification**:
+  - Write unit tests for core algorithm/business logic (e.g. frontend token splitting `splitToken` or backend Ebbinghaus repetition interval calculations) to verify boundary cases. Do not obsess over 100% test coverage if it slows down development velocity.
+  - New API endpoints must include basic functional verification (using Mock responses on the frontend, and unit/integration tests on the backend).
 
-### 2. 安全红线 (Zero Trust Security)
-- **密钥与环境变量**：
-  - 严禁将任何大模型 API 秘钥（如 Gemini Key / OpenAI Key）、数据库连接字符串（如 postgres 密码）、JWT 签名秘钥等敏感明文直接硬编码在代码文件中。
-  - 必须使用环境变量或 `.env` 配置文件载入敏感值，且 `.env` 必须加入 `.gitignore` 排除列表。
-- **敏感信息与 IP 脱敏**：
-  - 严禁在任何被 Git 追踪的代码、脚本注释、文档、说明示例中硬编码真实的生产环境物理服务器 IP。示例一律改用无关的局域网/回环地址（如 `192.168.1.100` 或 `127.0.0.1`）。
-  - 对于移动端 App，必须采用 Dart 环境变量定义（`--dart-define`）等编译期参数动态注入技术，杜绝将真实的物理 IP 硬写进打包二进制或公开代码仓。
-- **历史记录漏密擦除**：
-  - 任何时候若误将密码、密钥或服务器真实 IP 提交至 Git 仓库，**严禁仅在后续 Commit 中直接删除修改**。
-  - 必须采用物理擦除历史的手法（如创建 Orphan 孤立分支干净合并或 Rebase root 强制推送），确保所有历史 Diff 中完全不留存任何泄漏密码的痕迹。
-- **防止注入与越权**：
-  - 关系型数据库查询（PostgreSQL）必须使用 GORM 的占位符语句或参数绑定机制，严禁进行字符串拼接以防 SQL 注入。
-  - 凡涉及单条记录操作的 API，必须做操作人所有权校验（即校验 `target.UserID == currentUserID`）。
-
----
-
-## 文档与开发一致性
-
-
-
-### 1. 代码注释与文档原则 (Code Commentary Guidelines)
-- **避免描述代码在“做什么”**：不要写冗余的注释来描述代码表层逻辑（如 `i++ // i 加一`）。
-- **强烈建议写“为什么这么做”（Why）**：在遇到复杂的算法、Hack/Workaround 操作、大模型 Prompt 的背景逻辑，或特定的业务妥协时，必须在代码中写明意图，方便 AI 代理或人类在后续重构或迭代时理解，防止误删或改坏。
+### 2. Zero Trust Security
+- **Credentials & Environment Variables**:
+  - Never hardcode any LLM API keys (e.g. Gemini Key, OpenAI Key), database connection strings, or JWT signing secrets in code.
+  - Use environment variables or `.env` files, and ensure `.env` is added to `.gitignore`.
+- **Sensitive Data & IP Masking**:
+  - Never hardcode real production server IPs in code, scripts, comments, or documentation. Use placeholder addresses (e.g. `192.168.1.100` or `127.0.0.1`).
+  - For the mobile app, compile-time variable injection (e.g. `--dart-define` in Dart) must be used to inject server URLs and IPs. Never hardcode real backend IPs in compiled binaries or public source repositories.
+- **Credential History Erasing**:
+  - If a password, API key, or real server IP is accidentally committed to the Git repository, **simply deleting it in a subsequent commit is not sufficient**.
+  - You must physically purge the history (e.g. using git rebase, git filter-repo, or creating a clean orphan branch and forcing push) to ensure the secret is not left in Git history.
+- **SQL Injection & Privilege Escalation Protection**:
+  - Always use GORM's parameterized queries or placeholder queries. Never concatenate raw strings to construct SQL queries.
+  - For any API manipulating a single record, verify ownership (e.g., check that `target.UserID == currentUserID`).
 
 ---
 
-## Vibe Coding 最佳实践 (AI & Human Collaboration)
+## Documentation and Code Comments
 
-为了让 AI 代理与人类协同开发达到最高效率并减少摩擦，必须遵循以下规则：
+### 1. Code Commentary Guidelines
+- **Avoid describing "what" the code does**: Do not write redundant comments for obvious logic (e.g. `i++ // increment i`).
+- **Explain "why" (the intent)**: For complex algorithms, workarounds, prompt designs, or specific compromises, document the context and intent so future developers (human or AI) do not break the code during updates.
 
-### 1. AI 友好文件限制 (File Size Limit)
-- **单个文件尽量控制在 300 行以内**，逻辑极度复杂的代码文件绝对不要超过 500 行。
-- 超过限制时，必须进行拆分（如前端拆分组件或 Custom Hook，后端拆分辅助函数或独立 Service 文件）。这极大地方便了 AI 代理精确读取、分析和替换代码，防止文件过长导致上下文截断或生成代码丢失。
+---
 
-### 2. 小步快跑，持续构建 (Incremental Verification)
-- **频繁运行编译检测**：在开发过程中采取增量修改方式，每完成一个小逻辑或组件，立即在本地运行 `go build ./...` 或 `npm run build`。
-- 严禁一次性编写上千行未经任何编译和测试验证的代码，确保代码库随时处于“编译通过并可运行”的健康状态。
+## Vibe Coding Best Practices (AI & Human Collaboration)
 
-### 3. 严禁脑补 API 与数据结构 (Zero Assumption)
-- 当 AI 代理在编写网络请求或调用数据库时，如果对接口定义的字段、数据类型或表结构不确定，**必须**查阅相关代码或数据库迁移文件，或直接向用户提问。
-- 严禁凭空猜测并使用不存在的 API 参数、JSON 键名或 GORM 表字段。
+To maximize collaboration efficiency between the AI agent and the human developer, follow these rules:
+
+### 1. File Size Limits (AI Friendly)
+- **Keep files under 300 lines** whenever possible. Highly complex code files must never exceed 500 lines.
+- Split files when they exceed this limit (e.g., extract sub-components or custom React hooks, partition helper functions or service classes in Go). This prevents context window truncation and code generation errors.
+
+### 2. Incremental Verification
+- **Run build checks frequently**: Modify code incrementally, running `go build ./...` or `npm run build` immediately after completing a logical change.
+- Never write hundreds of lines of code without running compilation checks.
+
+### 3. Zero Assumption
+- If you are unsure about API contracts, database fields, or struct types, **always** inspect the code, check migration files, or ask the user.
+- Never guess API parameter names, JSON key names, or database column names.
