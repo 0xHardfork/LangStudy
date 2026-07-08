@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
@@ -7,6 +8,8 @@ import '../../features/auth/cubit/auth_cubit.dart';
 class ApiClient {
   late final Dio _dio;
   final SharedPreferences _prefs;
+  bool _isRefreshing = false;
+  final List<Completer<void>> _refreshQueue = [];
 
   ApiClient(this._prefs) {
     _dio = Dio(
@@ -51,8 +54,27 @@ class ApiClient {
           if (e.response?.statusCode == 401) {
             final path = e.requestOptions.path;
             if (path != '/login' && path != '/register' && path != '/refresh') {
+              if (_isRefreshing) {
+                // If a token refresh is already in progress, wait for it to complete
+                final completer = Completer<void>();
+                _refreshQueue.add(completer);
+                try {
+                  await completer.future;
+                  // Retry the original request with the new access token
+                  final token = _prefs.getString('auth_token') ?? '';
+                  final options = e.requestOptions;
+                  options.headers['Authorization'] = 'Bearer $token';
+                  final cloneReq = await _dio.fetch(options);
+                  return handler.resolve(cloneReq);
+                } catch (err) {
+                  // Forward the error if the refresh failed
+                  return handler.next(err is DioException ? err : e);
+                }
+              }
+
               final refreshToken = _prefs.getString('auth_refresh_token') ?? '';
               if (refreshToken.isNotEmpty) {
+                _isRefreshing = true;
                 try {
                   // Spin up a separate Dio instance for refreshing to avoid recursive interceptor loops
                   final refreshDio = Dio(
@@ -79,6 +101,14 @@ class ApiClient {
                         await _prefs.setString('auth_token', newToken);
                         await _prefs.setString('auth_refresh_token', newRefreshToken);
 
+                        _isRefreshing = false;
+
+                        // Resolve all waiting requests in the queue
+                        for (final completer in _refreshQueue) {
+                          completer.complete();
+                        }
+                        _refreshQueue.clear();
+
                         // Retry original failed request with the new access token
                         final options = e.requestOptions;
                         options.headers['Authorization'] = 'Bearer $newToken';
@@ -88,9 +118,39 @@ class ApiClient {
                       }
                     }
                   }
-                } catch (_) {
-                  // Token refresh failed or expired, clean credentials and force logout
-                  await getIt<AuthCubit>().logout();
+                  throw Exception('Refresh response parsing failed');
+                } catch (err) {
+                  _isRefreshing = false;
+
+                  // Determine if the error is due to an invalid/expired refresh token
+                  bool isTokenInvalid = false;
+                  if (err is DioException) {
+                    final statusCode = err.response?.statusCode;
+                    if (statusCode == 400 || statusCode == 401) {
+                      isTokenInvalid = true;
+                    }
+                  } else {
+                    // For other non-network logic failures
+                    isTokenInvalid = true;
+                  }
+
+                  if (isTokenInvalid) {
+                    // Refresh token is expired or invalid, reject all waiting requests
+                    for (final completer in _refreshQueue) {
+                      completer.completeError(err);
+                    }
+                    _refreshQueue.clear();
+
+                    // Force logout
+                    await getIt<AuthCubit>().logout();
+                  } else {
+                    // It's a temporary network issue or server 5xx error.
+                    // DO NOT log out. Complete the waiting requests with error so they propagate properly
+                    for (final completer in _refreshQueue) {
+                      completer.completeError(err);
+                    }
+                    _refreshQueue.clear();
+                  }
                 }
               } else {
                 // No refresh token available, force logout
