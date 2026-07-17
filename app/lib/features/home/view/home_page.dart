@@ -301,6 +301,17 @@ class HomePage extends StatelessWidget {
                   const SizedBox(height: 16),
 
                   _buildActionCard(
+                    id: 'btn-start-subtitle',
+                    emoji: '🎬',
+                    title: '视频字幕翻译与解析',
+                    desc: '上传字幕文件，翻译并逐句做语法深度解析',
+                    colors: [const Color(0xFF991B1B), const Color(0xFF0F172A)],
+                    glowColor: const Color(0xFFF43F5E).withOpacity(0.1),
+                    onTap: () => context.push('/subtitle'),
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildActionCard(
                     id: 'btn-start-history',
                     emoji: '📚',
                     title: '浏览学习历史',

@@ -1,89 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import type { ReadingArticle, ReadingSentence } from '../../types'
-import { regenerateReadingSentence } from '../../services/api'
+import { regenerateReadingSentence, addReadingSentence } from '../../services/api'
 import { useAppStore } from '../../store/useAppStore'
 import Markdown from '../common/Markdown'
-
-// ─── Local Audio Player ──────────────────────────────────────────────────────
-
-type PlayState = 'idle' | 'playing' | 'looping'
-
-interface SentenceAudioProps {
-  audioPath: string | null
-}
-
-function SentenceAudio({ audioPath }: SentenceAudioProps) {
-  const [playState, setPlayState] = useState<PlayState>('idle')
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  const stop = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
-      audioRef.current = null
-    }
-    setPlayState('idle')
-  }
-
-  const play = () => {
-    if (!audioPath) return
-    stop()
-    const a = new Audio('/' + audioPath)
-    a.onended = () => setPlayState('idle')
-    a.onerror = () => setPlayState('idle')
-    audioRef.current = a
-    setPlayState('playing')
-    a.play().catch(stop)
-  }
-
-  const loop = () => {
-    if (!audioPath) return
-    if (playState === 'looping') {
-      stop()
-      return
-    }
-    stop()
-    const a = new Audio('/' + audioPath)
-    a.loop = true
-    audioRef.current = a
-    setPlayState('looping')
-    a.play().catch(stop)
-  }
-
-  useEffect(() => {
-    return () => stop()
-  }, [audioPath])
-
-  if (!audioPath) return null
-
-  return (
-    <div className="flex gap-1.5">
-      <button
-        onClick={play}
-        disabled={playState === 'playing'}
-        title="播放单次"
-        className={`px-3 py-1.5 rounded-lg text-[13px] border cursor-pointer transition-all duration-150 ${
-          playState === 'playing'
-            ? 'bg-blue-500/25 border-blue-500/30 text-blue-400'
-            : 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:bg-slate-700/40 hover:text-slate-200'
-        }`}
-      >
-        {playState === 'playing' ? '⏸ 播放中' : '🔊 听音'}
-      </button>
-      <button
-        onClick={loop}
-        title="循环播放"
-        className={`px-3 py-1.5 rounded-lg text-[13px] border cursor-pointer transition-all duration-150 ${
-          playState === 'looping'
-            ? 'bg-violet-500/25 border-violet-500 text-violet-300'
-            : 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:bg-slate-700/40 hover:text-slate-200'
-        }`}
-      >
-        {playState === 'looping' ? '⏹ 停止循环' : '🔁 循环'}
-      </button>
-    </div>
-  )
-}
+import SentenceAudio from './SentenceAudio'
 
 // ─── ReadingArticleDetail Component ──────────────────────────────────────────
 
@@ -105,6 +25,9 @@ export default function ReadingArticleDetail({
   const token = useAppStore((state) => state.token!)
   const [regenerating, setRegenerating] = useState(false)
   const [regenerateError, setRegenerateError] = useState<string | null>(null)
+  const [newSentenceText, setNewSentenceText] = useState('')
+  const [addingSentence, setAddingSentence] = useState(false)
+  const [addSentenceError, setAddSentenceError] = useState<string | null>(null)
 
   const handleRegenerate = async (sentenceId: number) => {
     if (regenerating) return
@@ -123,6 +46,33 @@ export default function ReadingArticleDetail({
       setRegenerateError(err.message || '重新生成失败，请重试')
     } finally {
       setRegenerating(false)
+    }
+  }
+
+  const handleAddSentence = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newSentenceText.trim() || addingSentence) return
+    setAddingSentence(true)
+    setAddSentenceError(null)
+    try {
+      const updatedArticle = await addReadingSentence(token, activeArticle.id, newSentenceText)
+      onArticleUpdate(updatedArticle)
+      setNewSentenceText('')
+      
+      const oldLength = activeArticle.sentences?.length ?? 0
+      const newLength = updatedArticle.sentences?.length ?? 0
+      if (newLength > oldLength) {
+        const addedSent = updatedArticle.sentences?.find((s) => s.sentence_index === oldLength)
+        if (addedSent) {
+          setActiveSentIdx(addedSent.sentence_index)
+        } else {
+          setActiveSentIdx(oldLength)
+        }
+      }
+    } catch (err: any) {
+      setAddSentenceError(err.message || '添加新句子失败，请重试')
+    } finally {
+      setAddingSentence(false)
     }
   }
 
@@ -159,40 +109,76 @@ export default function ReadingArticleDetail({
       {/* Split view */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
         {/* Left Side: Dialogue Chat Bubble view */}
-        <div className="p-6 rounded-2xl bg-slate-900/15 border border-slate-800/60 flex flex-col gap-6 max-h-[70vh] overflow-y-auto">
+        <div className="p-6 rounded-2xl bg-slate-900/15 border border-slate-800/60 flex flex-col gap-4 max-h-[70vh]">
           <div className="text-xs text-slate-500 font-semibold">
             💡 提示：点击下方的英文句子即可显示对应句子的中文释义与详细语法解析
           </div>
 
-          <div className="flex flex-col gap-6">
-            {paragraphs.map((sentencesInP, pIdx) => (
-              <div
-                key={pIdx}
-                className="p-4 rounded-xl bg-slate-950/20 border border-slate-900 flex flex-col gap-3"
-              >
-                <div className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">
-                  段落 {pIdx + 1}
-                </div>
-                <div className="text-base leading-relaxed text-slate-350 flex flex-wrap gap-x-2 gap-y-1.5">
-                  {sentencesInP.map((sent) => {
-                    const isActive = activeSentIdx === sent.sentence_index
-                    return (
-                      <span
-                        key={sent.id}
-                        onClick={() => setActiveSentIdx(sent.sentence_index)}
-                        className={`cursor-pointer px-1 rounded transition-all duration-150 ${
-                          isActive
-                            ? 'bg-blue-500/25 border-b-2 border-blue-400 text-slate-100 shadow-sm'
-                            : 'border-b border-dashed border-slate-700/60 hover:bg-slate-800/40 text-slate-300'
-                        }`}
-                      >
-                        {sent.original_text}
-                      </span>
-                    )
-                  })}
-                </div>
+          <div className="flex-1 overflow-y-auto flex flex-col gap-6 pr-1">
+            {paragraphs.length === 0 ? (
+              <div className="text-slate-500 text-sm text-center py-12">
+                💡 主题下暂无句子，请在下方输入并解析第一句！
               </div>
-            ))}
+            ) : (
+              paragraphs.map((sentencesInP, pIdx) => (
+                <div
+                  key={pIdx}
+                  className="p-4 rounded-xl bg-slate-950/20 border border-slate-900 flex flex-col gap-3"
+                >
+                  <div className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">
+                    段落 {pIdx + 1}
+                  </div>
+                  <div className="text-base leading-relaxed text-slate-350 flex flex-wrap gap-x-2 gap-y-1.5">
+                    {sentencesInP.map((sent) => {
+                      const isActive = activeSentIdx === sent.sentence_index
+                      return (
+                        <span
+                          key={sent.id}
+                          onClick={() => setActiveSentIdx(sent.sentence_index)}
+                          className={`cursor-pointer px-1 rounded transition-all duration-150 ${
+                            isActive
+                              ? 'bg-blue-500/25 border-b-2 border-blue-400 text-slate-100 shadow-sm'
+                              : 'border-b border-dashed border-slate-700/60 hover:bg-slate-800/40 text-slate-300'
+                          }`}
+                        >
+                          {sent.original_text}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Add sentence form */}
+          <div className="mt-2 pt-4 border-t border-slate-800/80">
+            <form onSubmit={handleAddSentence} className="flex flex-col gap-3">
+              <span className="text-xs text-slate-400 font-semibold flex items-center gap-1">
+                ➕ 在此主题下追加新句子并解析
+              </span>
+              <div className="flex gap-2">
+                <textarea
+                  rows={2}
+                  value={newSentenceText}
+                  onChange={(e) => setNewSentenceText(e.target.value)}
+                  placeholder="输入新的英文句子，支持多句或段落..."
+                  className="flex-1 p-2.5 rounded-lg border border-slate-800 bg-slate-950/60 text-slate-100 text-xs outline-none focus:border-blue-500/50 transition-colors resize-none leading-relaxed"
+                />
+                <button
+                  type="submit"
+                  disabled={addingSentence || !newSentenceText.trim()}
+                  className="px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all flex items-center justify-center disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {addingSentence ? '解析中...' : '发送'}
+                </button>
+              </div>
+              {addSentenceError && (
+                <div className="text-red-400 text-[11px] font-semibold">
+                  ⚠️ {addSentenceError}
+                </div>
+              )}
+            </form>
           </div>
         </div>
 

@@ -28,11 +28,15 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
   PlayerState _playerState = PlayerState.stopped;
   bool _isSwitchingSource = false;
   double _playbackSpeed = 1.0;
+  late final TextEditingController _inputController;
+  late final ScrollController _scrollController;
 
   @override
   void initState() {
     super.initState();
     _audioPlayer = AudioPlayer();
+    _inputController = TextEditingController();
+    _scrollController = ScrollController();
 
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) {
@@ -54,6 +58,8 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
   @override
   void dispose() {
     _audioPlayer.dispose();
+    _inputController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -281,6 +287,23 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
     );
   }
 
+  Future<void> _sendSentence(String text) async {
+    _inputController.clear();
+    final cubit = context.read<ReadingCubit>();
+    await cubit.addReadingSentence(widget.articleId, text);
+
+    // Scroll to bottom after state updates
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final readingCubit = context.watch<ReadingCubit>();
@@ -365,7 +388,7 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
                                 _playingIndex != null
                                     ? '${_playerState == PlayerState.playing ? "正在播放" : "已暂停"} 第 ${_playingIndex! + 1} / ${sentences.length} 句'
                                     : '未开始播放',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -452,88 +475,159 @@ class _ReadingArticleDetailPageState extends State<ReadingArticleDetailPage> {
 
                   // Chat-like sentence list
                   Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: sentences.length,
-                      itemBuilder: (context, index) {
-                        final sent = sentences[index];
-                        final isCurrentLine = _playingIndex == index;
-                        final isLinePlaying = isCurrentLine && _playerState == PlayerState.playing;
+                    child: sentences.isEmpty
+                        ? const Center(
+                            child: Text(
+                              '主题下暂无句子，请在下方追加句并解析 💡',
+                              style: TextStyle(color: Colors.grey, fontSize: 13),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.all(16),
+                            itemCount: sentences.length,
+                            itemBuilder: (context, index) {
+                              final sent = sentences[index];
+                              final isCurrentLine = _playingIndex == index;
+                              final isLinePlaying = isCurrentLine && _playerState == PlayerState.playing;
 
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12.0),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Row(
-                              key: _bubbleKeys[index],
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: InkWell(
-                                    onTap: () => _showSentenceDetails(context, sent, state.analyzing),
-                                    borderRadius: BorderRadius.circular(16),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                      decoration: BoxDecoration(
-                                        color: isCurrentLine
-                                            ? Colors.blue[950]?.withOpacity(0.4)
-                                            : const Color(0xFF1E293B),
-                                        borderRadius: const BorderRadius.only(
-                                          topLeft: Radius.circular(16),
-                                          topRight: Radius.circular(16),
-                                          bottomRight: Radius.circular(16),
-                                          bottomLeft: Radius.circular(4),
-                                        ),
-                                        border: Border.all(
-                                          color: isCurrentLine ? Colors.blueAccent : Colors.grey.withOpacity(0.1),
-                                          width: isCurrentLine ? 2.0 : 1.0,
-                                        ),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            sent.originalText,
-                                            style: TextStyle(
-                                              color: isCurrentLine ? Colors.white : const Color(0xFFE2E8F0),
-                                              fontWeight: isCurrentLine ? FontWeight.w600 : FontWeight.normal,
-                                              fontSize: 15,
-                                              height: 1.4,
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12.0),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                    key: _bubbleKeys[index],
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: InkWell(
+                                          onTap: () => _showSentenceDetails(context, sent, state.analyzing),
+                                          borderRadius: BorderRadius.circular(16),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                            decoration: BoxDecoration(
+                                              color: isCurrentLine
+                                                  ? Colors.blue[950]?.withOpacity(0.4)
+                                                  : const Color(0xFF1E293B),
+                                              borderRadius: const BorderRadius.only(
+                                                topLeft: Radius.circular(16),
+                                                topRight: Radius.circular(16),
+                                                bottomRight: Radius.circular(16),
+                                                bottomLeft: Radius.circular(4),
+                                              ),
+                                              border: Border.all(
+                                                color: isCurrentLine ? Colors.blueAccent : Colors.grey.withOpacity(0.1),
+                                                width: isCurrentLine ? 2.0 : 1.0,
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  sent.originalText,
+                                                  style: TextStyle(
+                                                    color: isCurrentLine ? Colors.white : const Color(0xFFE2E8F0),
+                                                    fontWeight: isCurrentLine ? FontWeight.w600 : FontWeight.normal,
+                                                    fontSize: 15,
+                                                    height: 1.4,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Text(
+                                                      'P${sent.paragraphIndex + 1} - S${sent.sentenceIndex + 1}',
+                                                      style: TextStyle(color: Colors.grey[500], fontSize: 10, fontWeight: FontWeight.w600),
+                                                    ),
+                                                    Text(
+                                                      '点击查看翻译与语法 💡',
+                                                      style: TextStyle(color: Colors.blue[300], fontSize: 10, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
                                             ),
                                           ),
-                                          const SizedBox(height: 6),
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                'P${sent.paragraphIndex + 1} - S${sent.sentenceIndex + 1}',
-                                                style: TextStyle(color: Colors.grey[500], fontSize: 10, fontWeight: FontWeight.w600),
-                                              ),
-                                              Text(
-                                                '点击查看翻译与语法 💡',
-                                                style: TextStyle(color: Colors.blue[300], fontSize: 10, fontWeight: FontWeight.bold),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        icon: Icon(
+                                          isLinePlaying ? Icons.pause_circle : Icons.play_circle,
+                                          color: isCurrentLine ? Colors.blueAccent : Colors.grey,
+                                          size: 28,
+                                        ),
+                                        onPressed: () => _togglePlayLine(index, sentences),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: Icon(
-                                    isLinePlaying ? Icons.pause_circle : Icons.play_circle,
-                                    color: isCurrentLine ? Colors.blueAccent : Colors.grey,
-                                    size: 28,
-                                  ),
-                                  onPressed: () => _togglePlayLine(index, sentences),
-                                ),
-                              ],
+                              );
+                            },
+                          ),
+                  ),
+
+                  // Chat-like bottom input bar
+                  Container(
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 10,
+                      bottom: 10 + MediaQuery.of(context).padding.bottom,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF0F172A),
+                      border: Border(top: BorderSide(color: Color(0xFF1E293B))),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _inputController,
+                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (val) {
+                              if (val.trim().isNotEmpty && !state.analyzing) {
+                                _sendSentence(val.trim());
+                              }
+                            },
+                            decoration: InputDecoration(
+                              hintText: state.analyzing ? 'AI 正在深度解析中...' : '追加英文新句子并解析...',
+                              hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              filled: true,
+                              fillColor: const Color(0xFF1E293B),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabled: !state.analyzing,
                             ),
                           ),
-                        );
-                      },
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: state.analyzing
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.blueAccent,
+                                  ),
+                                )
+                              : const Icon(Icons.send, color: Colors.blueAccent),
+                          onPressed: state.analyzing
+                              ? null
+                              : () {
+                                  final val = _inputController.text.trim();
+                                  if (val.isNotEmpty) {
+                                    _sendSentence(val);
+                                  }
+                                },
+                        ),
+                      ],
                     ),
                   ),
                 ],

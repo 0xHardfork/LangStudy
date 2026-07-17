@@ -15,6 +15,8 @@ type Store interface {
 	GetArticle(ctx context.Context, id, userID uint) (*ReadingArticle, error)
 	GetSentence(ctx context.Context, id uint) (*ReadingSentence, error)
 	UpdateSentence(ctx context.Context, sent *ReadingSentence) error
+	AddSentences(ctx context.Context, sents []ReadingSentence) error
+	UpdateArticleRawText(ctx context.Context, id uint, rawText string) error
 }
 
 type gormStore struct {
@@ -82,6 +84,22 @@ func (s *gormStore) UpdateSentence(ctx context.Context, sent *ReadingSentence) e
 		Updates(sent).Error
 	if err != nil {
 		return fmt.Errorf("update reading sentence: %w", err)
+	}
+	return nil
+}
+
+func (s *gormStore) AddSentences(ctx context.Context, sents []ReadingSentence) error {
+	err := s.db.WithContext(ctx).Create(&sents).Error
+	if err != nil {
+		return fmt.Errorf("add reading sentences: %w", err)
+	}
+	return nil
+}
+
+func (s *gormStore) UpdateArticleRawText(ctx context.Context, id uint, rawText string) error {
+	err := s.db.WithContext(ctx).Model(&ReadingArticle{}).Where("id = ?", id).Update("raw_text", rawText).Error
+	if err != nil {
+		return fmt.Errorf("update article raw text: %w", err)
 	}
 	return nil
 }

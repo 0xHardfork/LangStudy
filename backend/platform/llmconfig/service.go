@@ -36,6 +36,13 @@ func (s *service) UpdateConfig(ctx context.Context, req *UpdateConfigRequest) (*
 	cfg.GrammarPromptTpl = req.GrammarPromptTpl
 	cfg.ReadingPromptTpl = req.ReadingPromptTpl
 
+	if req.SubtitleTranslatePromptTpl != "" {
+		cfg.SubtitleTranslatePromptTpl = req.SubtitleTranslatePromptTpl
+	}
+	if req.SubtitleAnalyzePromptTpl != "" {
+		cfg.SubtitleAnalyzePromptTpl = req.SubtitleAnalyzePromptTpl
+	}
+
 	if err := s.store.Update(ctx, cfg); err != nil {
 		return nil, err
 	}

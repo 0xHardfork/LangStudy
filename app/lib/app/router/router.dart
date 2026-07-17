@@ -12,6 +12,9 @@ import '../../features/grammar/view/grammar_dashboard_page.dart';
 import '../../features/grammar/view/grammar_article_detail_page.dart';
 import '../../features/reading/view/reading_dashboard_page.dart';
 import '../../features/reading/view/reading_article_detail_page.dart';
+import '../../features/subtitle/view/subtitle_dashboard_page.dart';
+import '../../features/subtitle/view/subtitle_detail_page.dart';
+import '../../features/subtitle/view/subtitle_progress_page.dart';
 import '../../features/history/view/learning_history_page.dart';
 
 final GoRouter router = GoRouter(
@@ -94,6 +97,28 @@ final GoRouter router = GoRouter(
           builder: (BuildContext context, GoRouterState state) {
             final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
             return ReadingArticleDetailPage(articleId: id);
+          },
+        ),
+      ],
+    ),
+    GoRoute(
+      path: '/subtitle',
+      builder: (BuildContext context, GoRouterState state) {
+        return const SubtitleDashboardPage();
+      },
+      routes: [
+        GoRoute(
+          path: 'detail/:id',
+          builder: (BuildContext context, GoRouterState state) {
+            final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+            return SubtitleDetailPage(topicId: id);
+          },
+        ),
+        GoRoute(
+          path: 'progress/:id',
+          builder: (BuildContext context, GoRouterState state) {
+            final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+            return SubtitleProgressPage(topicId: id);
           },
         ),
       ],

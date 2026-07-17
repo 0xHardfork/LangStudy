@@ -184,3 +184,52 @@ export const LEVEL_LABELS: Record<string, string> = {
   advanced: '高级',
 }
 
+export interface SubtitleBlock {
+  id: number
+  topic_id: number
+  block_index: number
+  start_time: string
+  end_time: string
+  raw_text: string
+  target_text: string
+  native_text: string
+}
+
+export interface SubtitleSentence {
+  id: number
+  topic_id: number
+  sentence_index: number
+  original_text: string
+  translation: string
+  explanation: string
+  created_at: string
+}
+
+export interface SubtitleChunk {
+  id: number
+  topic_id: number
+  chunk_index: number
+  start_index: number
+  end_index: number
+  raw_content: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  error_message: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SubtitleTopic {
+  id: number
+  user_id: number
+  title: string
+  original_file_name: string
+  native_language: string
+  target_language: string
+  status: 'pending' | 'completed'
+  is_shared?: boolean
+  created_at: string
+  blocks?: SubtitleBlock[]
+  sentences?: SubtitleSentence[]
+  chunks?: SubtitleChunk[]
+}
+

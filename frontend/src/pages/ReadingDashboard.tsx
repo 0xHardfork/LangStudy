@@ -59,7 +59,7 @@ export default function ReadingDashboard({ onBack }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!titleInput.trim() || !textInput.trim() || analyzing) return
+    if (!titleInput.trim() || analyzing) return
     await runAnalysis(titleInput, textInput)
     setTitleInput('')
     setTextInput('')
@@ -106,13 +106,12 @@ export default function ReadingDashboard({ onBack }: Props) {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[13px] text-slate-400 font-semibold">英文长文内容</label>
+                  <label className="text-[13px] text-slate-400 font-semibold">英文长文内容 (可选，可直接提交后逐句添加)</label>
                   <textarea
-                    required
                     rows={12}
                     value={textInput}
                     onChange={(e) => setTextInput(e.target.value)}
-                    placeholder="在此粘贴或输入您的英文文章，建议控制在 5000 字符以内..."
+                    placeholder="在此粘贴或输入您的英文文章，建议控制在 5000 字符以内。留空则只创建主题，可在详情中追加句子..."
                     className="p-3 rounded-lg border border-slate-800 bg-slate-950/60 text-slate-100 text-sm outline-none focus:border-blue-500/50 transition-colors resize-y leading-relaxed"
                   />
                 </div>

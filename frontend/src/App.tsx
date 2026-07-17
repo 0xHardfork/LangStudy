@@ -9,6 +9,7 @@ import UserProfileModal from './components/UserProfileModal'
 import LearningHistory from './pages/LearningHistory'
 import GrammarDashboard from './pages/GrammarDashboard'
 import ReadingDashboard from './pages/ReadingDashboard'
+import SubtitleDashboard from './pages/SubtitleDashboard'
 import Home from './pages/Home'
 import Header from './components/layout/Header'
 import { useAuth } from './hooks/useAuth'
@@ -149,6 +150,12 @@ function AppContent() {
 
               <Route path="/reading" element={
                 <ReadingDashboard
+                  onBack={() => navigate('/')}
+                />
+              } />
+
+              <Route path="/subtitle" element={
+                <SubtitleDashboard
                   onBack={() => navigate('/')}
                 />
               } />

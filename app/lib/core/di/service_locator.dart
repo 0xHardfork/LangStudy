@@ -16,6 +16,9 @@ import '../../features/grammar/cubit/grammar_cubit.dart';
 import '../../features/reading/data/datasource/reading_datasource.dart';
 import '../../features/reading/data/repository/reading_repository.dart';
 import '../../features/reading/cubit/reading_cubit.dart';
+import '../../features/subtitle/data/datasource/subtitle_datasource.dart';
+import '../../features/subtitle/data/repository/subtitle_repository.dart';
+import '../../features/subtitle/cubit/subtitle_cubit.dart';
 
 final getIt = GetIt.instance;
 
@@ -55,4 +58,10 @@ Future<void> setupServiceLocator() async {
   final readingRepository = ReadingRepository(readingDatasource);
   getIt.registerSingleton<ReadingRepository>(readingRepository);
   getIt.registerSingleton<ReadingCubit>(ReadingCubit(readingRepository));
+
+  // Subtitle Feature
+  final subtitleDatasource = SubtitleDatasource(apiClient);
+  final subtitleRepository = SubtitleRepository(subtitleDatasource);
+  getIt.registerSingleton<SubtitleRepository>(subtitleRepository);
+  getIt.registerSingleton<SubtitleCubit>(SubtitleCubit(subtitleRepository));
 }

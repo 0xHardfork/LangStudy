@@ -91,6 +91,29 @@ class ReadingCubit extends Cubit<ReadingState> {
     }
   }
 
+  Future<void> addReadingSentence(int articleId, String text) async {
+    final currentState = state;
+    if (currentState is! ReadingLoaded) return;
+
+    emit(currentState.copyWith(analyzing: true, error: () => null));
+    try {
+      final updatedArticle = await _repository.addReadingSentence(articleId, text);
+      final updatedHistory = currentState.history.map((art) {
+        return art.id == articleId ? updatedArticle : art;
+      }).toList();
+      emit(ReadingLoaded(
+        history: updatedHistory,
+        currentArticle: updatedArticle,
+        analyzing: false,
+      ));
+    } catch (e) {
+      emit(currentState.copyWith(
+        analyzing: false,
+        error: () => e.toString().replaceAll('Exception: ', ''),
+      ));
+    }
+  }
+
   void resetCurrentArticle() {
     final currentState = state;
     if (currentState is ReadingLoaded) {

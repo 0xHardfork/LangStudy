@@ -25,6 +25,7 @@ type Service interface {
 	GetHistory(ctx context.Context, userID uint) ([]ReadingArticle, error)
 	GetArticle(ctx context.Context, id, userID uint) (*ReadingArticle, error)
 	RegenerateSentence(ctx context.Context, userID, sentenceID uint) (*ReadingSentence, error)
+	AddSentence(ctx context.Context, userID uint, articleID uint, text string) (*ReadingArticle, error)
 }
 
 type svc struct {
@@ -142,6 +143,20 @@ func repairJSON(s string) string {
 }
 
 func (s *svc) AnalyzeText(ctx context.Context, userID uint, req *AnalyzeReadingRequest) (*ReadingArticle, error) {
+	if strings.TrimSpace(req.Text) == "" {
+		art := &ReadingArticle{
+			UserID:    userID,
+			Title:     req.Title,
+			RawText:   "",
+			Sentences: []ReadingSentence{},
+			CreatedAt: time.Now(),
+		}
+		if err := s.store.CreateArticle(ctx, art); err != nil {
+			return nil, err
+		}
+		return art, nil
+	}
+
 	cfg, err := s.llmSvc.GetConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get llm config: %w", err)
@@ -320,6 +335,146 @@ func (s *svc) RegenerateSentence(ctx context.Context, userID, sentenceID uint) (
 	}
 
 	return sent, nil
+}
+
+func (s *svc) AddSentence(ctx context.Context, userID uint, articleID uint, text string) (*ReadingArticle, error) {
+	// 1. Check ownership and load existing article
+	art, err := s.store.GetArticle(ctx, articleID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if art == nil {
+		return nil, fmt.Errorf("article not found or unauthorized")
+	}
+
+	// 2. Parse text into new sentences
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	rawParagraphs := strings.Split(text, "\n")
+
+	// Determine starting indices
+	maxSentenceIdx := -1
+	maxParagraphIdx := -1
+	for _, sent := range art.Sentences {
+		if sent.SentenceIndex > maxSentenceIdx {
+			maxSentenceIdx = sent.SentenceIndex
+		}
+		if sent.ParagraphIndex > maxParagraphIdx {
+			maxParagraphIdx = sent.ParagraphIndex
+		}
+	}
+
+	var newSentences []ReadingSentence
+	sentenceIdx := maxSentenceIdx + 1
+	// The new sentences will start in the next paragraph
+	paragraphIdx := maxParagraphIdx + 1
+
+	for _, pText := range rawParagraphs {
+		pText = strings.TrimSpace(pText)
+		if pText == "" {
+			continue
+		}
+		pSentences := splitSentences(pText)
+		for _, sText := range pSentences {
+			newSentences = append(newSentences, ReadingSentence{
+				ArticleID:      articleID,
+				SentenceIndex:  sentenceIdx,
+				ParagraphIndex: paragraphIdx,
+				OriginalText:   sText,
+				CreatedAt:      time.Now(),
+			})
+			sentenceIdx++
+		}
+		paragraphIdx++
+	}
+
+	if len(newSentences) == 0 {
+		return nil, errors.New("no valid sentences found to add")
+	}
+
+	folderName := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	// 3. Concurrently analyze new sentences and generate TTS
+	cfg, err := s.llmSvc.GetConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get llm config: %w", err)
+	}
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5) // max 5 concurrent LLM calls
+
+	for i := range newSentences {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			sText := newSentences[idx].OriginalText
+
+			if ctx.Err() != nil {
+				newSentences[idx].Translation = "（处理被取消）"
+				newSentences[idx].Explanation = "因超时或请求取消，本句未进行语法解析。"
+				return
+			}
+
+			// Generate audio
+			audioRelPath := fmt.Sprintf("static/audio/reading/%s/add_%d.mp3", folderName, idx)
+			ttsErr := s.generateAudio(ctx, sText, audioRelPath)
+			if ttsErr == nil {
+				newSentences[idx].AudioPath = &audioRelPath
+			} else {
+				s.log.Warn("tts generation failed for added reading sentence", zap.String("sentence", sText), zap.Error(ttsErr))
+			}
+
+			// Call LLM
+			prompt := buildReadingPrompt(cfg.ReadingPromptTpl, sText)
+			llmOutput, err := s.llmCli.Call(ctx, cfg.ApiUrl, cfg.ApiKey, cfg.ModelName, prompt)
+			if err != nil {
+				s.log.Warn("failed to call LLM for added reading analysis", zap.String("sentence", sText), zap.Error(err))
+				newSentences[idx].Translation = "（AI 翻译失败）"
+				newSentences[idx].Explanation = fmt.Sprintf("AI 语法分析失败，错误: %v", err)
+				return
+			}
+
+			cleanedJSON := cleanJSONMarkdown(llmOutput)
+			repairedJSON := repairJSON(cleanedJSON)
+
+			var parsed struct {
+				Translation string `json:"translation"`
+				Explanation string `json:"explanation"`
+			}
+
+			if err := json.Unmarshal([]byte(repairedJSON), &parsed); err != nil {
+				s.log.Warn("failed to parse JSON from LLM output for added sentence", zap.String("output", llmOutput), zap.Error(err))
+				newSentences[idx].Translation = "（格式解析失败）"
+				newSentences[idx].Explanation = fmt.Sprintf("AI 原始分析输出如下：\n%s", llmOutput)
+				return
+			}
+
+			newSentences[idx].Translation = parsed.Translation
+			newSentences[idx].Explanation = parsed.Explanation
+		}(i)
+	}
+	wg.Wait()
+
+	// 4. Save new sentences to store
+	if err := s.store.AddSentences(ctx, newSentences); err != nil {
+		return nil, err
+	}
+
+	// 5. Update article raw_text by appending the new text
+	var updatedRawText string
+	if art.RawText == "" {
+		updatedRawText = text
+	} else {
+		updatedRawText = art.RawText + "\n\n" + text
+	}
+	if err := s.store.UpdateArticleRawText(ctx, articleID, updatedRawText); err != nil {
+		return nil, err
+	}
+
+	// 6. Return fresh reloaded article details
+	return s.store.GetArticle(ctx, articleID, userID)
 }
 
 // --- TTS helper functions ---

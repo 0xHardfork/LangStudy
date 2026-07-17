@@ -24,4 +24,8 @@ class ReadingRepository {
   Future<ReadingSentence> regenerateReadingSentence(int sentenceId) {
     return _datasource.regenerateReadingSentence(sentenceId);
   }
+
+  Future<ReadingArticle> addReadingSentence(int articleId, String text) {
+    return _datasource.addReadingSentence(articleId, text);
+  }
 }

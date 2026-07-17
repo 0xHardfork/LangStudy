@@ -17,6 +17,7 @@ import (
 	"github.com/0xHardfork/langstudy/internal/ebbinghaus"
 	"github.com/0xHardfork/langstudy/internal/grammar"
 	"github.com/0xHardfork/langstudy/internal/reading"
+	"github.com/0xHardfork/langstudy/internal/subtitle"
 	"github.com/0xHardfork/langstudy/internal/user"
 	"github.com/0xHardfork/langstudy/migrations"
 	"github.com/0xHardfork/langstudy/platform/auth"
@@ -108,6 +109,13 @@ func main() {
 		log.Info("automatic migrations disabled in production mode")
 	}
 
+	// Reset any stuck subtitle chunks from previous runs
+	if err := db.Model(&subtitle.SubtitleChunk{}).Where("status = ?", "processing").Update("status", "pending").Error; err != nil {
+		log.Warn("failed to reset stuck chunks on startup", zap.Error(err))
+	} else {
+		log.Info("reset any leftover processing subtitle chunks to pending")
+	}
+
 	// 7-9. User module wiring
 	userStore := user.NewStore(db)
 	userService := user.NewService(userStore, cfg, redisClient)
@@ -168,6 +176,10 @@ func main() {
 	readingService := reading.NewService(readingStore, llmService, log, llmCli, cfg.App.StaticDir)
 	readingHandler := reading.NewHandler(readingService)
 
+	subtitleStore := subtitle.NewStore(db)
+	subtitleService := subtitle.NewService(subtitleStore, llmService, log, llmCli)
+	subtitleHandler := subtitle.NewHandler(subtitleService)
+
 	// 10. Router
 	ginMode := gin.DebugMode
 	if cfg.App.Env == "production" {
@@ -200,6 +212,7 @@ func main() {
 		ebbHandler.RegisterRoutes(authed)
 		grammarHandler.RegisterRoutes(authed)
 		readingHandler.RegisterRoutes(authed)
+		subtitleHandler.RegisterRoutes(authed)
 		llmHandler.RegisterRoutes(adminGroup)
 	}
 

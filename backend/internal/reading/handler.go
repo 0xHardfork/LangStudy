@@ -108,10 +108,40 @@ func (h *Handler) RegenerateSentence(c *gin.Context) {
 	response.Success(c, http.StatusOK, updatedSent)
 }
 
+// AddSentence handles appending sentences to an existing article.
+func (h *Handler) AddSentence(c *gin.Context) {
+	userID, err := auth.CurrentUserID(c)
+	if err != nil {
+		response.Fail(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	idStr := c.Param("id")
+	articleID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid article id")
+		return
+	}
+
+	var req AddSentenceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, validator.Translate(err))
+		return
+	}
+
+	updatedArt, err := h.svc.AddSentence(c.Request.Context(), userID, uint(articleID), req.Text)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, updatedArt)
+}
+
 // RegisterRoutes sets up routes under the authorized router group.
 func (h *Handler) RegisterRoutes(authed *gin.RouterGroup) {
 	authed.POST("/reading/analyze", h.Analyze)
 	authed.GET("/reading/history", h.GetHistory)
 	authed.GET("/reading/article/:id", h.GetArticle)
 	authed.POST("/reading/sentence/:id/regenerate", h.RegenerateSentence)
+	authed.POST("/reading/article/:id/sentence", h.AddSentence)
 }

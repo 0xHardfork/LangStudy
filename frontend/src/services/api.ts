@@ -1,4 +1,4 @@
-import type { Dialogue, DialogueType, DialogueWithProgress, ReviewItem, UserLearningProfile, GrammarArticle, GrammarQuizReviewDetail, GrammarSentence, AuthUser, ReadingArticle, ReadingSentence } from '../types'
+import type { Dialogue, DialogueType, DialogueWithProgress, ReviewItem, UserLearningProfile, GrammarArticle, GrammarQuizReviewDetail, GrammarSentence, AuthUser, ReadingArticle, ReadingSentence, SubtitleTopic, SubtitleSentence } from '../types'
 
 const BASE = '/api/v1'
 
@@ -287,4 +287,97 @@ export function regenerateReadingSentence(token: string, sentenceId: number): Pr
     method: 'POST',
   })
 }
+
+export function addReadingSentence(token: string, articleId: number, text: string): Promise<ReadingArticle> {
+  return apiCall<ReadingArticle>(token, `/reading/article/${articleId}/sentence`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  })
+}
+
+// ─── Subtitle ──────────────────────────────────────────────────────────────
+
+export async function uploadSubtitle(
+  token: string,
+  file: File,
+  title: string,
+  targetLang: string,
+  nativeLang: string
+): Promise<SubtitleTopic> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('title', title)
+  formData.append('target_language', targetLang)
+  formData.append('native_language', nativeLang)
+
+  const res = await fetch(`${BASE}/subtitle/upload`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: formData,
+  })
+
+  const json = await res.json()
+  if (json.code !== 0) {
+    throw new Error(json.msg || '服务器内部出错')
+  }
+  return json.data as SubtitleTopic
+}
+
+export function getSubtitleHistory(token: string): Promise<SubtitleTopic[]> {
+  return apiCall<SubtitleTopic[]>(token, '/subtitle/history')
+}
+
+export function getSubtitleTopic(token: string, id: number): Promise<SubtitleTopic> {
+  return apiCall<SubtitleTopic>(token, `/subtitle/topic/${id}`)
+}
+
+export function regenerateSubtitleSentence(token: string, sentenceId: number): Promise<SubtitleSentence> {
+  return apiCall<SubtitleSentence>(token, `/subtitle/sentence/${sentenceId}/regenerate`, {
+    method: 'POST',
+  })
+}
+
+export function deleteSubtitleTopic(token: string, id: number): Promise<void> {
+  return apiCall<void>(token, `/subtitle/topic/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+export function processSubtitleChunk(token: string, chunkId: number): Promise<{ ok: boolean }> {
+  return apiCall<{ ok: boolean }>(token, `/subtitle/chunk/${chunkId}/process`, {
+    method: 'POST',
+  })
+}
+
+export function processSubtitleTopic(token: string, topicId: number): Promise<{ ok: boolean }> {
+  return apiCall<{ ok: boolean }>(token, `/subtitle/topic/${topicId}/process`, {
+    method: 'POST',
+  })
+}
+
+export function mergeSubtitleTopic(token: string, topicId: number): Promise<{ ok: boolean }> {
+  return apiCall<{ ok: boolean }>(token, `/subtitle/topic/${topicId}/merge`, {
+    method: 'POST',
+  })
+}
+
+export function shareSubtitleTopic(token: string, topicId: number): Promise<{ ok: boolean }> {
+  return apiCall<{ ok: boolean }>(token, `/subtitle/topic/${topicId}/share`, {
+    method: 'POST',
+  })
+}
+
+export function unshareSubtitleTopic(token: string, topicId: number): Promise<{ ok: boolean }> {
+  return apiCall<{ ok: boolean }>(token, `/subtitle/topic/${topicId}/unshare`, {
+    method: 'POST',
+  })
+}
+
+export function getSharedSubtitles(token: string): Promise<SubtitleTopic[]> {
+  return apiCall<SubtitleTopic[]>(token, '/subtitle/shared')
+}
+
 

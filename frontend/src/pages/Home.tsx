@@ -156,6 +156,14 @@ export default function Home() {
           onClick={() => navigate('/reading')}
         />
         <ActionCard
+          id="btn-start-subtitle"
+          emoji="🎬"
+          title="视频字幕翻译与语法分析"
+          desc="上传字幕文件，翻译转换为学习语言与双语字幕，并做逐句语法深度解析"
+          cardClass="bg-gradient-to-br from-rose-950/40 to-amber-950/30 hover:from-rose-900/50 hover:to-amber-900/40 hover:shadow-rose-500/5"
+          onClick={() => navigate('/subtitle')}
+        />
+        <ActionCard
           id="btn-start-history"
           emoji="📚"
           title="浏览学习历史"

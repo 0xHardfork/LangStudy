@@ -40,5 +40,11 @@ func (ReadingSentence) TableName() string {
 // AnalyzeReadingRequest represents the payload for creating a reading analysis.
 type AnalyzeReadingRequest struct {
 	Title string `json:"title" binding:"required,max=255"`
-	Text  string `json:"text"  binding:"required,max=5000"`
+	Text  string `json:"text"  binding:"max=5000"`
 }
+
+// AddSentenceRequest represents the payload for adding sentences to an existing article.
+type AddSentenceRequest struct {
+	Text string `json:"text" binding:"required,max=5000"`
+}
+

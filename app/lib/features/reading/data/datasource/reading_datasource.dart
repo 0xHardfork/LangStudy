@@ -31,4 +31,12 @@ class ReadingDatasource {
     final Map<String, dynamic> data = await _client.post<Map<String, dynamic>>('/reading/sentence/$sentenceId/regenerate');
     return ReadingSentence.fromJson(data);
   }
+
+  Future<ReadingArticle> addReadingSentence(int articleId, String text) async {
+    final Map<String, dynamic> data = await _client.post<Map<String, dynamic>>(
+      '/reading/article/$articleId/sentence',
+      data: {'text': text},
+    );
+    return ReadingArticle.fromJson(data);
+  }
 }
